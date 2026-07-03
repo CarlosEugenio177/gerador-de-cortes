@@ -28,7 +28,7 @@ class SubtitleService:
                     minutes -= 60
         return f"{hours}:{minutes:02d}:{secs:02d}.{centiseconds:02d}"
 
-    def generate_ass_file(self, words: List[Dict], clip_start: float, output_path: str, style_name: str = "default") -> bool:
+    def generate_ass_file(self, words: List[Dict], clip_start: float, output_path: str, style_name: str = "default", primary_color: str = None, font_size: int = None, animation: str = None) -> bool:
         """
         Generates an Advanced SubStation Alpha (.ass) file for the clip.
         'words' is a list of dicts: {"start": float, "end": float, "word": str}
@@ -39,22 +39,51 @@ class SubtitleService:
 
         style_name = style_name.lower().strip()
 
-        # Styles Configuration
-        # &H00FFFFFF = White
-        # &H0000FFFF = Yellow (BGR)
-        # &H00000000 = Black
+        # Base Styles Configuration
+        # Default fallback values
         styles_map = {
-            "default": "Style: Default,Roboto,90,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,5,10,10,960,1",
-            "hormozi": "Style: Default,Impact,100,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,8,2,5,10,10,960,1",
-            "netflix": "Style: Default,Arial,75,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,3,2,0,2,10,10,60,1"
+            "default": {"fontname": "Roboto", "fontsize": 90, "primary": "&H00FFFFFF", "secondary": "&H000000FF", "outline": "&H00000000", "back": "&H00000000", "align": 5},
+            "hormozi": {"fontname": "Impact", "fontsize": 100, "primary": "&H00FFFFFF", "secondary": "&H000000FF", "outline": "&H00000000", "back": "&H00000000", "align": 5, "border": 8, "shadow": 2},
+            "netflix": {"fontname": "Arial", "fontsize": 75, "primary": "&H00FFFFFF", "secondary": "&H000000FF", "outline": "&H00000000", "back": "&H80000000", "align": 2, "border": 2, "shadow": 0, "marginv": 60}
         }
 
-        # Fallback to default if style not found
-        selected_style_def = styles_map.get(style_name, styles_map["default"])
+        # Select base style
+        base_style = styles_map.get("default").copy()
         if "hormozi" in style_name:
-            selected_style_def = styles_map["hormozi"]
+            base_style = styles_map.get("hormozi").copy()
         elif "netflix" in style_name:
-            selected_style_def = styles_map["netflix"]
+            base_style = styles_map.get("netflix").copy()
+
+        # Apply custom overrides
+        if primary_color:
+            # Assumes color comes in as HEX, e.g., #FFFFFF
+            # ASS format is &HAABBGGRR. We can just convert #RRGGBB -> &H00BBGGRR
+            if primary_color.startswith("#") and len(primary_color) == 7:
+                r = primary_color[1:3]
+                g = primary_color[3:5]
+                b = primary_color[5:7]
+                base_style["primary"] = f"&H00{b}{g}{r}"
+
+        if font_size:
+            base_style["fontsize"] = font_size
+
+        fontname = base_style.get("fontname")
+        fsize = base_style.get("fontsize")
+        primary = base_style.get("primary")
+        secondary = base_style.get("secondary")
+        outline = base_style.get("outline")
+        back = base_style.get("back")
+        align = base_style.get("align")
+        border = base_style.get("border", 6)
+        shadow = base_style.get("shadow", 0)
+        marginv = base_style.get("marginv", 10)
+
+        # Style line format
+        # Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+        style_line = f"Style: Default,{fontname},{fsize},{primary},{secondary},{outline},{back},-1,0,0,0,100,100,0,0,1,{border},{shadow},{align},10,10,{marginv},1"
+        
+        # Save animation globally for the event loop
+        self.current_animation = animation
 
         ass_header = f"""[Script Info]
 ScriptType: v4.00+
@@ -64,7 +93,7 @@ WrapStyle: 1
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-{selected_style_def}
+{style_line}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -116,13 +145,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         formatted_words = []
                         for j, w in enumerate(phrase):
                             if i == j:
-                                if "hormozi" in style_name:
-                                    # Yellow + Pop Animation (\t scaling) + Rotation jitter could be added, but simple scale is robust
+                                if self.current_animation == "pop":
+                                    formatted_words.append(f"{{\\c&H00FFFF&\\fscx120\\fscy120\\t(0,100,\\fscx100\\fscy100)}}{w['text']}{{\\c&HFFFFFF&\\fscx100\\fscy100}}")
+                                elif self.current_animation == "karaoke":
+                                    formatted_words.append(f"{{\\c&H00FFFF&}}{w['text']}{{\\c&HFFFFFF&}}")
+                                elif self.current_animation == "none":
+                                    formatted_words.append(w["text"])
+                                elif "hormozi" in style_name:
                                     formatted_words.append(f"{{\\c&H00FFFF&\\fscx120\\fscy120\\t(0,100,\\fscx100\\fscy100)}}{w['text']}{{\\c&HFFFFFF&\\fscx100\\fscy100}}")
                                 elif "netflix" in style_name:
-                                    formatted_words.append(w["text"]) # Netflix doesn't do karaoke highlighting
+                                    formatted_words.append(w["text"])
                                 else:
-                                    # Default simple yellow highlight
                                     formatted_words.append(f"{{\\c&H00FFFF&}}{w['text']}{{\\c&HFFFFFF&}}")
                             else:
                                 formatted_words.append(w["text"])

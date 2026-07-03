@@ -52,6 +52,7 @@ func StartEventListeners() {
 	go listenToChannel("events:clips_ready", handleClipsReady)
 	go listenToChannel("events:clip_completed", handleClipCompleted)
 	go listenToChannel("events:failed", handleFailed)
+	go listenToChannel("events:transcript_ready", handleTranscriptReady)
 }
 
 func listenToChannel(channel string, handler func(payload EventPayload, rawMsg string)) {
@@ -82,6 +83,10 @@ func handleProgress(payload EventPayload, rawMsg string) {
 	if payload.Status != "" {
 		repository.DB.Model(&models.Project{}).Where("id = ?", getProjectIDUint(payload.ProjectID)).Update("status", payload.Status)
 	}
+}
+
+func handleTranscriptReady(payload EventPayload, rawMsg string) {
+	log.Printf("[events:transcript_ready] Project %v transcript generated.", payload.ProjectID)
 }
 
 func handleClipsReady(payload EventPayload, rawMsg string) {

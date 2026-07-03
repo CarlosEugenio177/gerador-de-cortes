@@ -6,11 +6,13 @@ import { motion } from "framer-motion";
 import { OssPopup } from "./OssPopup";
 import { useEffect, useState } from "react";
 
+import { StyleEditor } from "./StyleEditor";
+import { TranscriptEditor } from "./TranscriptEditor";
+
 export function EditorLayout() {
   const { clips, selectedClip, setSelectedClip, showOssPopup, setShowOssPopup, projectId, reprocessProject, processingStatus, videoUrl } = useAppStore();
   
   const [editorMode, setEditorMode] = useState<'clips' | 'full_video'>('clips');
-  const [activeTool, setActiveTool] = useState<string | null>(null);
 
   const currentVideoSrc = (editorMode === 'clips' 
     ? (selectedClip ? `http://localhost:8000/${selectedClip.video_url}` : undefined)
@@ -18,13 +20,10 @@ export function EditorLayout() {
 
   const handleDownloadAll = () => {
     clips.forEach((clip, index) => {
-      // Create a temporary link to trigger the download
       const link = document.createElement("a");
       link.href = `http://localhost:8000/${clip.video_url}`;
-      link.download = `clipforge_${clip.title.replace(/\s+/g, "_")}.mp4`;
+      link.download = `clipforge_${clip.title.replace(/\\s+/g, "_")}.mp4`;
       document.body.appendChild(link);
-      
-      // Delay each download slightly to prevent browser blocking
       setTimeout(() => {
         link.click();
         document.body.removeChild(link);
@@ -36,7 +35,7 @@ export function EditorLayout() {
     if (showOssPopup) {
       const timer = setTimeout(() => {
         setShowOssPopup(false);
-      }, 4000); // 4 seconds total to let exit animation finish
+      }, 4000);
       return () => clearTimeout(timer);
     }
   }, [showOssPopup, setShowOssPopup]);
@@ -55,7 +54,7 @@ export function EditorLayout() {
         <div className="flex items-center space-x-4">
           <button 
             className="p-1 hover:bg-zinc-900 rounded transition-colors text-zinc-400 hover:text-white"
-            onClick={() => window.location.href = '/'} // Hard reset para voltar ao início
+            onClick={() => window.location.href = '/'}
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
@@ -154,63 +153,7 @@ export function EditorLayout() {
               </div>
             </>
           ) : (
-            <>
-              <div className="p-4 border-b border-zinc-900">
-                <h2 className="text-xs font-mono uppercase tracking-widest text-zinc-500">Ferramentas de Edição</h2>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
-                  <h3 className="text-zinc-200 text-sm font-bold mb-2">Gerar Legendas</h3>
-                  <p className="text-zinc-500 text-xs mb-4">Transcreve o vídeo completo e sobrepõe legendas dinâmicas estilo TikTok/Reels.</p>
-                  <button 
-                    disabled={processingStatus === 'processing' || !projectId}
-                    onClick={() => {
-                      setActiveTool('subtitles');
-                      if (projectId) reprocessProject(projectId, "FULL_VIDEO_EDIT\nsubtitle_style: default\nvideo_formats: 16:9");
-                    }}
-                    className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors flex justify-center items-center gap-2"
-                  >
-                    {processingStatus === 'processing' && activeTool === 'subtitles' ? (
-                      <><RefreshCw className="w-3 h-3 animate-spin" /> Processando...</>
-                    ) : 'Aplicar Legendas'}
-                  </button>
-                </div>
-
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
-                  <h3 className="text-zinc-200 text-sm font-bold mb-2">Remoção de Silêncio</h3>
-                  <p className="text-zinc-500 text-xs mb-4">Detecta e corta automaticamente buracos de áudio e pausas longas.</p>
-                  <button 
-                    disabled={processingStatus === 'processing' || !projectId}
-                    onClick={() => {
-                      setActiveTool('silences');
-                      if (projectId) reprocessProject(projectId, "FULL_VIDEO_EDIT\nremove_silences: true\nsubtitle_style: none\nvideo_formats: 16:9");
-                    }}
-                    className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors flex justify-center items-center gap-2"
-                  >
-                    {processingStatus === 'processing' && activeTool === 'silences' ? (
-                      <><RefreshCw className="w-3 h-3 animate-spin" /> Processando...</>
-                    ) : 'Remover Silêncios'}
-                  </button>
-                </div>
-
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
-                  <h3 className="text-zinc-200 text-sm font-bold mb-2">Filtro de Ruído</h3>
-                  <p className="text-zinc-500 text-xs mb-4">Aplica filtro de áudio por IA para isolar a voz e remover chiados de fundo.</p>
-                  <button 
-                    disabled={processingStatus === 'processing' || !projectId}
-                    onClick={() => {
-                      setActiveTool('noise');
-                      if (projectId) reprocessProject(projectId, "FULL_VIDEO_EDIT\nremove_noise: true\nsubtitle_style: none\nvideo_formats: 16:9");
-                    }}
-                    className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors flex justify-center items-center gap-2"
-                  >
-                    {processingStatus === 'processing' && activeTool === 'noise' ? (
-                      <><RefreshCw className="w-3 h-3 animate-spin" /> Processando...</>
-                    ) : 'Limpar Áudio'}
-                  </button>
-                </div>
-              </div>
-            </>
+            <StyleEditor />
           )}
         </aside>
 
@@ -233,7 +176,13 @@ export function EditorLayout() {
             )}
           </div>
         </main>
-
+        
+        {/* Right Sidebar: Transcript Editor */}
+        {editorMode === 'full_video' && (
+          <aside className="w-96 border-l border-zinc-900 bg-[#050505] flex flex-col shrink-0">
+            <TranscriptEditor />
+          </aside>
+        )}
       </div>
     </motion.div>
   );

@@ -23,6 +23,10 @@ export const useWebSocket = (projectId: string | null) => {
         const data = JSON.parse(event.data);
         console.log('[WebSocket] Message received:', data);
 
+        if (data.transcript) {
+          useAppStore.getState().setTranscript(data.transcript);
+        }
+
         if (data.status) {
           updateProgress(data.status, data.message || '', data.progress || 0);
 

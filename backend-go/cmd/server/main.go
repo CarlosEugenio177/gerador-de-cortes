@@ -87,6 +87,10 @@ func main() {
 	projects.Delete("/:id", handlers.DeleteProject)
 	projects.Post("/:id/reprocess", handlers.ReprocessProject)
 	projects.Post("/:id/cancel", handlers.CancelProject)
+	projects.Post("/:id/transcribe", handlers.TranscribeProject)
+	projects.Get("/:id/transcript", handlers.GetTranscript)
+	projects.Put("/:id/transcript", handlers.SaveTranscript)
+	projects.Post("/:id/render-custom", handlers.RenderCustomProject)
 
 	// Clips
 	clips := v1.Group("/clips")

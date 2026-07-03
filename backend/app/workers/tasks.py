@@ -283,3 +283,126 @@ async def run_process_video(project_id: int, file_path: str, prompt: str) -> Non
                 os.remove(audio_path)
             except Exception as cleanup_error:
                 logger.warning(f"Failed to cleanup {audio_path}: {cleanup_error}")
+
+async def run_transcribe_video(project_id: int, file_path: str) -> None:
+    logger.info(f"Starting standalone transcription for project {project_id}")
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    r = Redis.from_url(redis_url)
+
+    _publish_status(project_id, "transcribing", "Extraindo áudio e legendas...", 10)
+    transcript_file = f"{file_path}.transcript.json"
+    audio_path = None
+
+    try:
+        if os.path.exists(transcript_file):
+            logger.info("Found existing transcription. Skipping Faster-Whisper!")
+            _publish_status(project_id, "transcribing", "Carregando transcrição existente (Rápido)...", 50)
+            with open(transcript_file, "r", encoding="utf-8") as f:
+                segments = json.load(f)
+        else:
+            from app.services.transcription import TranscriptionService
+            transcription_service = TranscriptionService(model_size="base", device="cuda")
+            
+            logger.info(f"Extracting audio from: {file_path}")
+            audio_path = transcription_service.extract_audio(file_path)
+
+            logger.info("Generating transcription with Faster-Whisper...")
+            _publish_status(project_id, "transcribing", "Transcrevendo áudio com Whisper...", 30)
+            segments = transcription_service.transcribe_audio(audio_path)
+
+            if not segments:
+                raise ValueError("Transcription returned no segments.")
+                
+            with open(transcript_file, "w", encoding="utf-8") as f:
+                json.dump(segments, f, ensure_ascii=False)
+
+        # Notify Go Backend
+        payload = json.dumps({
+            "project_id": project_id,
+            "transcript": segments
+        })
+        r.publish("events:transcript_ready", payload)
+        
+        _publish_status(project_id, "idle", "Transcrição concluída!", 100)
+
+    except Exception as e:
+        logger.exception(f"Error in transcribe for project {project_id}: {str(e)}")
+        _publish_status(project_id, "failed", f"Erro na transcrição: {str(e)}")
+    finally:
+        if audio_path and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup {audio_path}: {cleanup_error}")
+
+async def run_render_custom(project_id: int, file_path: str, style_config: dict) -> None:
+    logger.info(f"Starting custom render for project {project_id}")
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    r = Redis.from_url(redis_url)
+
+    try:
+        _publish_status(project_id, "processing", "Preparando renderização...", 10)
+        
+        # Read the customized transcript (it should have been saved by Go)
+        transcript_file = f"{file_path}.transcript.json"
+        if not os.path.exists(transcript_file):
+            raise FileNotFoundError("Transcript not found for custom render")
+            
+        with open(transcript_file, "r", encoding="utf-8") as f:
+            segments = json.load(f)
+            
+        # We need to flatten segments into words for SubtitleService
+        words = []
+        for segment in segments:
+            if "words" in segment:
+                for w in segment["words"]:
+                    words.append({"start": w["start"], "end": w["end"], "word": w["word"]})
+            else:
+                # Fallback if there are no word-level timestamps, just use the whole segment
+                words.append({"start": segment["start"], "end": segment["end"], "word": segment["text"]})
+
+        from app.services.subtitle import SubtitleService
+        subtitle_service = SubtitleService()
+        
+        # We save the ASS file in the same directory
+        ass_output_path = f"{file_path}.custom.ass"
+        
+        # Custom logic in SubtitleService will be called here
+        subtitle_style = style_config.get("subtitle_style", "default")
+        primary_color = style_config.get("primary_color")
+        font_size = style_config.get("font_size")
+        animation = style_config.get("animation")
+        
+        # For now, pass style_name. We'll modify generate_ass_file to accept more args soon.
+        subtitle_service.generate_ass_file(
+            words=words, 
+            clip_start=0.0, 
+            output_path=ass_output_path, 
+            style_name=subtitle_style,
+            primary_color=primary_color,
+            font_size=font_size,
+            animation=animation
+        )
+
+        ops = [{
+            "operation_type": "add_subtitles",
+            "file": ass_output_path
+        }]
+        
+        video_format = style_config.get("video_format", "16:9")
+
+        edit_plan = {
+            "project_id": project_id,
+            "original_file": file_path,
+            "video_format": video_format,
+            "remove_noise": style_config.get("remove_noise", False),
+            "operations": ops
+        }
+
+        r.rpush("queue:render", json.dumps(edit_plan))
+        
+        _publish_status(project_id, "rendering", "Enviado para renderização...", 85)
+
+    except Exception as e:
+        logger.exception(f"Error in custom render for project {project_id}: {str(e)}")
+        _publish_status(project_id, "failed", f"Erro no render: {str(e)}")

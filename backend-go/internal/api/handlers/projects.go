@@ -151,3 +151,98 @@ func CancelProject(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"message": "Project cancelled"})
 }
+
+func TranscribeProject(c *fiber.Ctx) error {
+	id := c.Params("id")
+	
+	var project models.Project
+	if err := repository.DB.First(&project, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Project not found"})
+	}
+
+	project.Status = "transcribing"
+	repository.DB.Save(&project)
+
+	// Dispatch to Redis
+	payload := fiber.Map{
+		"project_id": project.ID,
+		"file_path":  project.OriginalFile,
+		"type":       "transcribe",
+	}
+	worker.RedisClient.RPush(worker.Ctx, "queue:analyze", payload)
+
+	return c.JSON(fiber.Map{"status": "transcribing"})
+}
+
+func GetTranscript(c *fiber.Ctx) error {
+	id := c.Params("id")
+	
+	var project models.Project
+	if err := repository.DB.First(&project, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Project not found"})
+	}
+
+	transcriptPath := project.OriginalFile + ".transcript.json"
+	if _, err := os.Stat(transcriptPath); os.IsNotExist(err) {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Transcript not found"})
+	}
+
+	return c.SendFile(transcriptPath)
+}
+
+func SaveTranscript(c *fiber.Ctx) error {
+	id := c.Params("id")
+	
+	var project models.Project
+	if err := repository.DB.First(&project, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Project not found"})
+	}
+
+	// We assume body is raw JSON array/object of the transcript
+	body := c.Body()
+	transcriptPath := project.OriginalFile + ".transcript.json"
+	
+	err := os.WriteFile(transcriptPath, body, 0644)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save transcript"})
+	}
+
+	return c.JSON(fiber.Map{"status": "saved"})
+}
+
+func RenderCustomProject(c *fiber.Ctx) error {
+	id := c.Params("id")
+	
+	var project models.Project
+	if err := repository.DB.First(&project, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Project not found"})
+	}
+
+	type StyleConfig struct {
+		SubtitleStyle string `json:"subtitle_style"`
+		PrimaryColor  string `json:"primary_color"`
+		FontSize      int    `json:"font_size"`
+		Animation     string `json:"animation"`
+		VideoFormat   string `json:"video_format"`
+		RemoveNoise   bool   `json:"remove_noise"`
+	}
+
+	var styleConfig StyleConfig
+	if err := c.BodyParser(&styleConfig); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid body"})
+	}
+
+	project.Status = "processing"
+	repository.DB.Save(&project)
+
+	// Dispatch to Redis
+	payload := fiber.Map{
+		"project_id":   project.ID,
+		"file_path":    project.OriginalFile,
+		"type":         "render_custom",
+		"style_config": styleConfig,
+	}
+	worker.RedisClient.RPush(worker.Ctx, "queue:analyze", payload)
+
+	return c.JSON(fiber.Map{"status": "processing"})
+}

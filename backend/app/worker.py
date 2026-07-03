@@ -26,9 +26,21 @@ def start_worker():
             file_path = payload.get("file_path")
             prompt = payload.get("prompt", "")
             
-            print(f">>> Received AI Task for Project ID: {project_id}")
-            asyncio.run(run_process_video(project_id, file_path, prompt))
-            print(f"<<< Completed Task for Project ID: {project_id}")
+            task_type = payload.get("type", "process")
+            
+            print(f">>> Received AI Task ({task_type}) for Project ID: {project_id}")
+            
+            if task_type == "transcribe":
+                from app.workers.tasks import run_transcribe_video
+                asyncio.run(run_transcribe_video(project_id, file_path))
+            elif task_type == "render_custom":
+                from app.workers.tasks import run_render_custom
+                style_config = payload.get("style_config", {})
+                asyncio.run(run_render_custom(project_id, file_path, style_config))
+            else:
+                asyncio.run(run_process_video(project_id, file_path, prompt))
+                
+            print(f"<<< Completed Task ({task_type}) for Project ID: {project_id}")
             
         except Exception as e:
             print(f"!!! Error processing task: {e}")
