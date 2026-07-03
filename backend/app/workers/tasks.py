@@ -36,19 +36,31 @@ async def run_process_video(project_id: int, file_path: str, prompt: str) -> Non
 
     _publish_status(project_id, "transcribing", "Extracting audio from video...", 10)
 
+    transcript_file = f"{file_path}.transcript.json"
     audio_path = None
+    
     try:
         transcription_service = TranscriptionService(model_size="base", device="cuda")
 
-        logger.info(f"Extracting audio from: {file_path}")
-        audio_path = transcription_service.extract_audio(file_path)
+        if os.path.exists(transcript_file):
+            logger.info("Found existing transcription. Skipping Faster-Whisper!")
+            _publish_status(project_id, "transcribing", "Carregando transcrição existente (Rápido)...", 20)
+            with open(transcript_file, "r", encoding="utf-8") as f:
+                segments = json.load(f)
+        else:
+            logger.info(f"Extracting audio from: {file_path}")
+            audio_path = transcription_service.extract_audio(file_path)
 
-        logger.info("Generating transcription with Faster-Whisper...")
-        _publish_status(project_id, "transcribing", "Transcribing audio (this may take a while)...", 20)
-        segments = transcription_service.transcribe_audio(audio_path)
+            logger.info("Generating transcription with Faster-Whisper...")
+            _publish_status(project_id, "transcribing", "Transcribing audio (this may take a while)...", 20)
+            segments = transcription_service.transcribe_audio(audio_path)
 
-        if not segments:
-            raise ValueError("Transcription returned no segments. Audio might be empty.")
+            if not segments:
+                raise ValueError("Transcription returned no segments. Audio might be empty.")
+                
+            # Cache the transcription
+            with open(transcript_file, "w", encoding="utf-8") as f:
+                json.dump(segments, f, ensure_ascii=False)
 
         duration = segments[-1]["end"]
         
@@ -96,6 +108,17 @@ async def run_process_video(project_id: int, file_path: str, prompt: str) -> Non
                     if start_val < end_val:
                         viral_moments.append({"start_time": start_val, "end_time": end_val, "viral_score": 100.0, "title": "Corte Manual", "description": "Corte manual pelo usuário"})
         
+        if "FULL_VIDEO_EDIT" in prompt:
+            logger.info("Full Video Edit requested. Bypassing Semantic Scoring.")
+            _publish_status(project_id, "analyzing", "Modo Edição Normal detectado. Aplicando estilo ao vídeo completo...", 50)
+            viral_moments.append({
+                "start_time": 0.0, 
+                "end_time": duration, 
+                "viral_score": 100.0, 
+                "title": "Vídeo Completo", 
+                "description": "Edição do vídeo original na íntegra (legendas e silêncios)"
+            })
+            
         if not viral_moments:
             logger.info("Segmenting transcript into blocks...")
             _publish_status(project_id, "analyzing", f"Analisando foco: '{command_config.topic_focus}'...", 50)
@@ -105,11 +128,24 @@ async def run_process_video(project_id: int, file_path: str, prompt: str) -> Non
             scored_blocks = scoring_service.score_blocks(blocks, topic_focus=command_config.topic_focus)
             
             logger.info("Merging and selecting best clips...")
+            
+            # Extract previously generated clips from prompt to avoid duplicates
+            import re
+            previous_clips = []
+            for match in re.finditer(r"from ([\d.]+)s to ([\d.]+)s", prompt):
+                try:
+                    prev_start = float(match.group(1))
+                    prev_end = float(match.group(2))
+                    previous_clips.append((prev_start, prev_end))
+                except ValueError:
+                    pass
+            
             viral_moments = scoring_service.merge_blocks(
                 scored_blocks, 
                 min_duration=command_config.min_duration, 
                 max_duration=command_config.max_duration, 
-                top_k=command_config.clip_count
+                top_k=command_config.clip_count,
+                previous_clips=previous_clips
             )
             
             if not viral_moments:
@@ -124,6 +160,16 @@ async def run_process_video(project_id: int, file_path: str, prompt: str) -> Non
         
         clips_metadata = []
         render_jobs = []
+
+        # Extract requested formats from prompt
+        import re
+        formats_match = re.search(r"video_formats:\s*([\d:,\s]+)", prompt)
+        requested_formats = []
+        if formats_match:
+            raw_formats = formats_match.group(1).split(",")
+            requested_formats = [f.strip() for f in raw_formats if f.strip()]
+        if not requested_formats:
+            requested_formats = [command_config.video_format]
 
         for i, moment in enumerate(viral_moments):
             start = float(moment.get("start_time", 0.0))
@@ -184,22 +230,32 @@ async def run_process_video(project_id: int, file_path: str, prompt: str) -> Non
                     "style": command_config.subtitle_style
                 })
 
-            edit_plan = {
-                "project_id": project_id,
-                "original_file": file_path,
-                "video_format": command_config.video_format,
-                "remove_noise": command_config.remove_noise,
-                "operations": operations
-            }
-            render_jobs.append(edit_plan)
+            for v_format in requested_formats:
+                formatted_title = f"[{v_format}] {clip_title}"
+                # Duplicate operations to change title in metadata
+                ops_copy = []
+                for op in operations:
+                    op_copy = op.copy()
+                    if op_copy.get("type") == "clip":
+                        op_copy["title"] = formatted_title
+                    ops_copy.append(op_copy)
 
-            clips_metadata.append({
-                "title": clip_title,
-                "description": clip_desc,
-                "score": score,
-                "start_time": start,
-                "end_time": end
-            })
+                edit_plan = {
+                    "project_id": project_id,
+                    "original_file": file_path,
+                    "video_format": v_format,
+                    "remove_noise": command_config.remove_noise,
+                    "operations": ops_copy
+                }
+                render_jobs.append(edit_plan)
+
+                clips_metadata.append({
+                    "title": formatted_title,
+                    "description": clip_desc,
+                    "score": score,
+                    "start_time": start,
+                    "end_time": end
+                })
 
         # Emite os metadados dos clipes para o Go salvar no banco antes de mandar pro render
         clips_payload = json.dumps({

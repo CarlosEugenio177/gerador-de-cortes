@@ -75,7 +75,9 @@ func main() {
 	})
 
 	// Static Files
-	app.Static("/uploads", "./uploads")
+	app.Static("/uploads", "./uploads", fiber.Static{
+		ByteRange: true,
+	})
 
 	// Projects
 	projects := v1.Group("/projects")
@@ -83,6 +85,7 @@ func main() {
 	projects.Get("/", handlers.GetProjects)
 	projects.Get("/:id", handlers.GetProject)
 	projects.Delete("/:id", handlers.DeleteProject)
+	projects.Post("/:id/reprocess", handlers.ReprocessProject)
 
 	// Listen
 	log.Printf("Starting API Gateway on port %s...", cfg.Port)

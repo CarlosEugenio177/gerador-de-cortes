@@ -47,7 +47,7 @@ interface AppState {
   advancedMode: boolean;
   editPlan: EditOperation[] | null;
 
-  forgeAspectRatio: string;
+  forgeAspectRatios: string[];
   forgeSubtitleStyle: string;
   forgeMode: string;
   forgeClipQuantity: number;
@@ -66,12 +66,14 @@ interface AppState {
   setClips: (clips: ClipResult[]) => void;
   toggleAdvancedMode: () => void;
   setEditPlan: (plan: EditOperation[]) => void;
-  setForgeSettings: (settings: Partial<Pick<AppState, 'forgeAspectRatio' | 'forgeSubtitleStyle' | 'forgeMode' | 'forgeClipQuantity' | 'forgeDurationMins' | 'forgeLanguage'>>) => void;
+  setForgeSettings: (settings: Partial<Pick<AppState, 'forgeAspectRatios' | 'forgeSubtitleStyle' | 'forgeMode' | 'forgeClipQuantity' | 'forgeDurationMins' | 'forgeLanguage'>>) => void;
+  reprocessProject: (projectId: string) => Promise<void>;
+  cancelProcessing: () => Promise<void>;
 }
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       projectId: null,
       videoUrl: null,
       videoFile: null,
@@ -98,7 +100,7 @@ export const useAppStore = create<AppState>()(
       advancedMode: false,
       editPlan: null,
 
-      forgeAspectRatio: '9:16',
+      forgeAspectRatios: ['9:16'],
       forgeSubtitleStyle: 'Fire',
       forgeMode: 'AUTO FORGE',
       forgeClipQuantity: 3,
@@ -152,11 +154,50 @@ export const useAppStore = create<AppState>()(
       setEditPlan: (plan) => set({ editPlan: plan }),
 
       setForgeSettings: (settings) => set((state) => ({ ...state, ...settings })),
+
+      reprocessProject: async (projectId: string) => {
+        set({ processingStatus: 'processing', statusMessage: 'Starting AI reprocessing...', progress: 0 });
+        try {
+          const state = get();
+          
+          let promptInstruction = `video_formats: ${state.forgeAspectRatios.join(",")}, subtitle_style: ${state.forgeSubtitleStyle}, mode: ${state.forgeMode}`;
+          if (state.forgeMode === 'FULL EDIT') {
+            promptInstruction += `\n\nFULL_VIDEO_EDIT`;
+          } else if (state.forgeMode !== 'MANUAL CUT') {
+            promptInstruction += `\n\nduration_request: ${state.forgeDurationMins} minutes\nclip_quantity: ${state.forgeClipQuantity}`;
+          }
+
+          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+          const res = await fetch(`${API_URL}/api/v1/projects/${projectId}/reprocess`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: promptInstruction }),
+          });
+          if (!res.ok) {
+            throw new Error("Failed to reprocess project");
+          }
+        } catch (error) {
+          console.error(error);
+          set({ processingStatus: 'failed', statusMessage: 'Failed to start reprocessing' });
+        }
+      },
+      cancelProcessing: async () => {
+        const state = get();
+        if (state.projectId) {
+          try {
+            const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            await fetch(`${API_URL}/api/v1/projects/${state.projectId}/cancel`, { method: 'POST' });
+          } catch (e) {
+            console.error("Cancel failed", e);
+          }
+        }
+        set({ processingStatus: 'idle', statusMessage: 'Cancelled', progress: 0 });
+      },
     }),
     {
       name: 'clipforge-settings',
       partialize: (state) => ({
-        forgeAspectRatio: state.forgeAspectRatio,
+        forgeAspectRatios: state.forgeAspectRatios,
         forgeSubtitleStyle: state.forgeSubtitleStyle,
         forgeMode: state.forgeMode,
         forgeClipQuantity: state.forgeClipQuantity,

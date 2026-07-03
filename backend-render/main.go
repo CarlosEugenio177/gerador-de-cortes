@@ -90,11 +90,11 @@ func main() {
 			continue
 		}
 
-		// Idempotency Lock: Prevent duplicate renders of the same clip
-		lockKey := fmt.Sprintf("lock:render:project_%d:clip_%s", plan.ProjectID, clipTitle)
+		// Idempotency Lock: Prevent duplicate renders of the same clip timeframe
+		lockKey := fmt.Sprintf("lock:render:project_%d:t_%.2f_%.2f:fmt_%s", plan.ProjectID, startTime, endTime, plan.VideoFormat)
 		locked, err := rdb.SetNX(ctx, lockKey, "1", 1*time.Hour).Result()
 		if err != nil || !locked {
-			log.Printf("Clip '%s' for Project %d is already being rendered (lock exists). Skipping duplicate job.", clipTitle, plan.ProjectID)
+			log.Printf("Clip '%s' for Project %d is already being rendered (lock exists on timeframe). Skipping duplicate job.", clipTitle, plan.ProjectID)
 			continue
 		}
 

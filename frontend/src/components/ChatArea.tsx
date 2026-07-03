@@ -20,7 +20,15 @@ export function ChatArea() {
 
     // 1. Add user message
     addMessage({ sender: "user", text: input });
-    const promptText = input;
+    
+    const { forgeAspectRatios, forgeSubtitleStyle, forgeMode, forgeDurationMins, forgeClipQuantity } = useAppStore.getState();
+    let promptText = input + `\n\nvideo_formats: ${forgeAspectRatios.join(",")}, subtitle_style: ${forgeSubtitleStyle}, mode: ${forgeMode}`;
+    if (forgeMode === 'FULL EDIT') {
+      promptText += `\n\nFULL_VIDEO_EDIT`;
+    } else if (forgeMode !== 'MANUAL CUT') {
+      promptText += `\n\nduration_request: ${forgeDurationMins} minutes\nclip_quantity: ${forgeClipQuantity}`;
+    }
+
     setInput("");
     setThinking(true);
     

@@ -94,7 +94,7 @@ class ClipScoringService:
 
         return scored_blocks
 
-    def merge_blocks(self, scored_blocks: List[Dict], min_duration: float = 30.0, max_duration: float = 60.0, top_k: int = 3) -> List[Dict]:
+    def merge_blocks(self, scored_blocks: List[Dict], min_duration: float = 30.0, max_duration: float = 60.0, top_k: int = 3, previous_clips: List[tuple] = None) -> List[Dict]:
         """
         Merges adjacent high-scoring blocks into clips between 30 and 60 seconds.
         Selects the top_k best clips.
@@ -106,7 +106,7 @@ class ClipScoringService:
         scored_blocks.sort(key=lambda x: x["final_score"], reverse=True)
         
         clips = []
-        used_times = []
+        used_times = previous_clips if previous_clips else []
 
         def is_overlapping(start, end):
             for us, ue in used_times:

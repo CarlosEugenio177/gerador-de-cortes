@@ -21,7 +21,10 @@ const i18n = {
     clipQuantity: "Quantity of Clips",
     targetDuration: "Target Duration (minutes)",
     igniting: "Forging...",
-    ignite: "Ignite Forge"
+    ignite: "Ignite Forge",
+    fullEdit: "Full Video Edit",
+    fullEditDesc: "Edit the entire video without cutting it",
+    cancel: "Cancel"
   },
   pt: {
     header: "Controles da Forja",
@@ -39,15 +42,18 @@ const i18n = {
     clipQuantity: "Quantidade de Cortes",
     targetDuration: "Duração Alvo (minutos)",
     igniting: "Forjando...",
-    ignite: "Ligar a Forja"
+    ignite: "Ligar a Forja",
+    fullEdit: "Edição Normal",
+    fullEditDesc: "Edita o vídeo inteiro sem fazer cortes",
+    cancel: "Cancelar"
   }
 };
 
 export function ForgeControls() {
   const { 
     isThinking, setThinking, videoFile, setProject, updateProgress, processingStatus,
-    forgeAspectRatio, forgeSubtitleStyle, forgeMode, forgeClipQuantity, forgeDurationMins, forgeLanguage, setForgeSettings,
-    projectName, setProjectName
+    forgeAspectRatios, forgeSubtitleStyle, forgeMode, forgeClipQuantity, forgeDurationMins, forgeLanguage, setForgeSettings,
+    projectName, setProjectName, projectId, reprocessProject, cancelProcessing
   } = useAppStore();
 
   const t = i18n[forgeLanguage];
@@ -65,9 +71,18 @@ export function ForgeControls() {
     setThinking(true);
     
     // Convert UI state into a prompt instruction for the LLM
-    let promptInstruction = `video_format: ${forgeAspectRatio}, subtitle_style: ${forgeSubtitleStyle}, mode: ${forgeMode}`;
-    if (forgeMode !== 'MANUAL CUT') {
-      promptInstruction += `, duration_request: ${forgeDurationMins} minutes, clip_quantity: ${forgeClipQuantity}`;
+    let promptInstruction = `video_formats: ${forgeAspectRatios.join(",")}, subtitle_style: ${forgeSubtitleStyle}, mode: ${forgeMode}`;
+    if (forgeMode === 'FULL EDIT') {
+      promptInstruction += `\n\nFULL_VIDEO_EDIT`;
+    } else if (forgeMode !== 'MANUAL CUT') {
+      promptInstruction += `\n\nduration_request: ${forgeDurationMins} minutes\nclip_quantity: ${forgeClipQuantity}`;
+    }
+
+    if (projectId) {
+      // We are reprocessing an existing project
+      await reprocessProject(projectId);
+      setThinking(false);
+      return;
     }
 
     const formData = new FormData();
@@ -99,13 +114,23 @@ export function ForgeControls() {
     }
   };
 
+  const toggleFormat = (val: string) => {
+    let newFormats = [...forgeAspectRatios];
+    if (newFormats.includes(val)) {
+      if (newFormats.length > 1) newFormats = newFormats.filter(v => v !== val);
+    } else {
+      newFormats.push(val);
+    }
+    setForgeSettings({ forgeAspectRatios: newFormats });
+  };
+
   const renderToggle = (label: string, icon: React.ReactNode, value: string, current: string, setter: (val: string) => void) => (
     <button
       type="button"
       disabled={isProcessing}
       onClick={() => setter(value)}
       className={`flex-1 flex flex-col items-center justify-center py-3 px-2 rounded-md border transition-all ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''} ${
-        current === value 
+        current === value || (Array.isArray(current) && current.includes(value))
           ? 'bg-zinc-900 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.15)] text-orange-500' 
           : 'bg-black border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300'
       }`}
@@ -167,9 +192,9 @@ export function ForgeControls() {
             {t.aspectRatio}
           </label>
           <div className="flex space-x-2">
-            {renderToggle("9:16 (TikTok)", <div className="w-3 h-5 border-2 rounded-sm border-current" />, "9:16", forgeAspectRatio, (val) => setForgeSettings({ forgeAspectRatio: val }))}
-            {renderToggle("1:1 (Insta)", <div className="w-4 h-4 border-2 rounded-sm border-current" />, "1:1", forgeAspectRatio, (val) => setForgeSettings({ forgeAspectRatio: val }))}
-            {renderToggle("16:9 (YT)", <div className="w-5 h-3 border-2 rounded-sm border-current" />, "16:9", forgeAspectRatio, (val) => setForgeSettings({ forgeAspectRatio: val }))}
+            {renderToggle("9:16 (TikTok)", <div className="w-3 h-5 border-2 rounded-sm border-current" />, "9:16", forgeAspectRatios as any, toggleFormat)}
+            {renderToggle("1:1 (Insta)", <div className="w-4 h-4 border-2 rounded-sm border-current" />, "1:1", forgeAspectRatios as any, toggleFormat)}
+            {renderToggle("16:9 (YT)", <div className="w-5 h-3 border-2 rounded-sm border-current" />, "16:9", forgeAspectRatios as any, toggleFormat)}
           </div>
         </div>
 
@@ -226,11 +251,22 @@ export function ForgeControls() {
                 <div className="text-[9px] text-zinc-500 mt-0.5">{t.manualCutDesc}</div>
               </div>
             </button>
+            <button
+              disabled={isProcessing}
+              onClick={() => setForgeSettings({ forgeMode: 'FULL EDIT' })}
+              className={`flex items-center p-3 rounded border transition-all ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''} ${forgeMode === 'FULL EDIT' ? 'bg-blue-900/20 border-blue-500/50 text-blue-500' : 'bg-black border-zinc-800 text-zinc-400 hover:border-zinc-700'}`}
+            >
+              <Play className="w-4 h-4 mr-3" />
+              <div className="text-left">
+                <div className="text-xs font-bold uppercase tracking-wider">{t.fullEdit}</div>
+                <div className="text-[9px] text-zinc-500 mt-0.5">{t.fullEditDesc}</div>
+              </div>
+            </button>
           </div>
         </div>
 
         {/* Sliders (Only for Auto/Hybrid) */}
-        {forgeMode !== 'MANUAL CUT' && (
+        {(forgeMode === 'AUTO FORGE' || forgeMode === 'HYBRID') && (
           <>
             <div className="space-y-3 pt-4 border-t border-zinc-900">
               <div className="flex justify-between items-center">
@@ -271,23 +307,24 @@ export function ForgeControls() {
 
       {/* Footer / Submit */}
       <div className="p-6 bg-black border-t border-zinc-900 z-10 sticky bottom-0">
-        <button
-          onClick={handleForge}
-          disabled={!videoFile || isProcessing}
-          className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-black py-4 px-4 rounded transition-all duration-300 transform active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(234,88,12,0.3)] uppercase tracking-[0.2em] text-xs"
-        >
-          {isProcessing ? (
-            <>
-              <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2" />
-              {t.igniting}
-            </>
-          ) : (
-            <>
-              <Flame className="w-4 h-4" />
-              <span>{t.ignite}</span>
-            </>
-          )}
-        </button>
+        {isProcessing ? (
+          <button
+            onClick={cancelProcessing}
+            className="w-full flex items-center justify-center space-x-2 bg-zinc-900 hover:bg-red-900/40 text-red-500 border border-red-900/50 font-black py-4 px-4 rounded transition-all duration-300 transform active:scale-95 shadow-[0_0_20px_rgba(220,38,38,0.15)] uppercase tracking-[0.2em] text-xs"
+          >
+            <div className="animate-pulse w-2 h-2 bg-red-500 rounded-full mr-2" />
+            {t.cancel}
+          </button>
+        ) : (
+          <button
+            onClick={handleForge}
+            disabled={(!videoFile && !projectId) || isProcessing}
+            className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-black py-4 px-4 rounded transition-all duration-300 transform active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(234,88,12,0.3)] uppercase tracking-[0.2em] text-xs"
+          >
+            <Flame className="w-4 h-4" />
+            <span>{t.ignite}</span>
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1,13 +1,13 @@
 "use client";
 
-import { MonitorPlay, Download, ChevronLeft } from "lucide-react";
+import { MonitorPlay, Download, ChevronLeft, RefreshCw } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { motion } from "framer-motion";
 import { OssPopup } from "./OssPopup";
 import { useEffect } from "react";
 
 export function EditorLayout() {
-  const { clips, selectedClip, setSelectedClip, showOssPopup, setShowOssPopup } = useAppStore();
+  const { clips, selectedClip, setSelectedClip, showOssPopup, setShowOssPopup, projectId, reprocessProject, processingStatus } = useAppStore();
 
   const currentVideoSrc = selectedClip ? `http://localhost:8000/${selectedClip.video_url}` : undefined;
 
@@ -61,6 +61,19 @@ export function EditorLayout() {
         </div>
         
         <div className="flex items-center space-x-3">
+          <button
+            onClick={() => {
+              if (projectId) {
+                window.location.href = '/?project=' + projectId;
+              }
+            }}
+            disabled={processingStatus === 'processing'}
+            className="flex items-center space-x-2 bg-zinc-800 text-zinc-300 px-4 py-1.5 rounded text-xs font-semibold hover:bg-zinc-700 hover:text-white transition-colors border border-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-4 h-4 ${processingStatus === 'processing' ? 'animate-spin' : ''}`} />
+            <span>Gerar Novos Cortes</span>
+          </button>
+
           <button
             onClick={handleDownloadAll}
             className="flex items-center space-x-2 bg-zinc-800 text-zinc-300 px-4 py-1.5 rounded text-xs font-semibold hover:bg-zinc-700 hover:text-white transition-colors border border-zinc-700"

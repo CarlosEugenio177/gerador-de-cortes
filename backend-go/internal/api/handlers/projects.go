@@ -90,3 +90,60 @@ func DeleteProject(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{"status": "deleted"})
 }
+
+func ReprocessProject(c *fiber.Ctx) error {
+	id := c.Params("id")
+	
+	var project models.Project
+	if err := repository.DB.Preload("Clips").First(&project, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Project not found"})
+	}
+
+	type ReprocessReq struct {
+		Prompt string `json:"prompt"`
+	}
+	var req ReprocessReq
+	if err := c.BodyParser(&req); err == nil && req.Prompt != "" {
+		project.Prompt = req.Prompt
+	}
+
+	// Update project status to processing
+	project.Status = "processing"
+	if err := repository.DB.Save(&project).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update project status"})
+	}
+
+	// Tell AI to avoid existing clips
+	prompt := project.Prompt
+	if len(project.Clips) > 0 {
+		prompt += "\n\nIMPORTANT INSTRUCTION: The following clips have already been generated for this video. Do NOT generate these exact same clips again. Find NEW, different, and interesting moments to highlight. Previously generated clips:\n"
+		for _, clip := range project.Clips {
+			prompt += fmt.Sprintf("- '%s' (from %.2fs to %.2fs)\n", clip.Title, clip.StartTime, clip.EndTime)
+		}
+	}
+
+	// Dispatch to Python AI Worker via Redis with the extended prompt
+	err := worker.DispatchExtractClips(project.ID, project.OriginalFile, prompt)
+	if err != nil {
+		fmt.Printf("Warning: failed to dispatch to celery: %v\n", err)
+	}
+
+	return c.JSON(fiber.Map{"status": "processing"})
+}
+
+// CancelProject cancels an ongoing project processing
+func CancelProject(c *fiber.Ctx) error {
+	id := c.Params("id")
+	
+	var project models.Project
+	if err := repository.DB.First(&project, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Project not found"})
+	}
+
+	project.Status = "cancelled"
+	if err := repository.DB.Save(&project).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update project status"})
+	}
+
+	return c.JSON(fiber.Map{"message": "Project cancelled"})
+}
