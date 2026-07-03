@@ -1,0 +1,229 @@
+import os
+import json
+import asyncio
+import logging
+from redis import Redis
+from app.services.transcription import TranscriptionService
+# from app.services.storage import get_storage_service (if needed in future)
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+
+def _publish_status(project_id: int, status: str, message: str, progress: int = 0):
+    """Helper to publish status to Redis for WebSockets."""
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        redis_client = Redis.from_url(redis_url)
+        payload = json.dumps({
+            "project_id": project_id,
+            "status": status, 
+            "message": message, 
+            "progress": progress
+        })
+        redis_client.publish("events:progress", payload)
+    except Exception as e:
+        logger.error(f"Failed to publish status to Redis: {e}")
+
+async def run_process_video(project_id: int, file_path: str, prompt: str) -> None:
+    """Async task executor implementing the DB-less AI pipeline."""
+    logger.info(f"Starting processing pipeline for project {project_id}")
+    
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    r = Redis.from_url(redis_url)
+
+    _publish_status(project_id, "transcribing", "Extracting audio from video...", 10)
+
+    audio_path = None
+    try:
+        transcription_service = TranscriptionService(model_size="base", device="cuda")
+
+        logger.info(f"Extracting audio from: {file_path}")
+        audio_path = transcription_service.extract_audio(file_path)
+
+        logger.info("Generating transcription with Faster-Whisper...")
+        _publish_status(project_id, "transcribing", "Transcribing audio (this may take a while)...", 20)
+        segments = transcription_service.transcribe_audio(audio_path)
+
+        if not segments:
+            raise ValueError("Transcription returned no segments. Audio might be empty.")
+
+        duration = segments[-1]["end"]
+        
+        logger.info(f"Finding best moments using Intelligent Pipeline with Prompt: '{prompt}'...")
+        from app.services.llm import LLMService
+        from app.services.clip_scoring_service import ClipScoringService
+        from app.services.subtitle import SubtitleService
+        
+        llm_service = LLMService(model="llama3")
+        scoring_service = ClipScoringService(llm_service=llm_service)
+
+        logger.info(f"Parsing User Command with LLM: '{prompt}'...")
+        _publish_status(project_id, "analyzing", "A IA está interpretando o seu pedido de edição...", 40)
+        command_config = llm_service.parse_user_command(prompt)
+        
+        # Override with explicit prompt instructions to prevent LLM hallucinations
+        import re
+        duration_match = re.search(r"duration_request:\s*([\d.]+)\s*minutes", prompt)
+        if duration_match:
+            try:
+                mins = float(duration_match.group(1))
+                secs = mins * 60.0
+                command_config.min_duration = secs
+                command_config.max_duration = secs
+                logger.info(f"Regex override: duration set to {secs}s")
+            except ValueError:
+                pass
+                
+        qty_match = re.search(r"clip_quantity:\s*(\d+)", prompt)
+        if qty_match:
+            try:
+                command_config.clip_count = int(qty_match.group(1))
+                logger.info(f"Regex override: clip_count set to {command_config.clip_count}")
+            except ValueError:
+                pass
+
+        
+        viral_moments = []
+        if "MANUAL CUT" in prompt and command_config.manual_timestamps and len(command_config.manual_timestamps) > 0:
+            logger.info("Manual timestamps provided! Bypassing Semantic Scoring.")
+            _publish_status(project_id, "analyzing", "Tempos manuais detectados. Pulando busca de IA...", 50)
+            for t_range in command_config.manual_timestamps:
+                if isinstance(t_range, list) and len(t_range) >= 2:
+                    start_val, end_val = float(t_range[0]), float(t_range[1])
+                    if start_val < end_val:
+                        viral_moments.append({"start_time": start_val, "end_time": end_val, "viral_score": 100.0, "title": "Corte Manual", "description": "Corte manual pelo usuário"})
+        
+        if not viral_moments:
+            logger.info("Segmenting transcript into blocks...")
+            _publish_status(project_id, "analyzing", f"Analisando foco: '{command_config.topic_focus}'...", 50)
+            blocks = scoring_service.segment_transcript(segments, block_size=15.0)
+            
+            logger.info("Scoring blocks...")
+            scored_blocks = scoring_service.score_blocks(blocks, topic_focus=command_config.topic_focus)
+            
+            logger.info("Merging and selecting best clips...")
+            viral_moments = scoring_service.merge_blocks(
+                scored_blocks, 
+                min_duration=command_config.min_duration, 
+                max_duration=command_config.max_duration, 
+                top_k=command_config.clip_count
+            )
+            
+            if not viral_moments:
+                logger.warning(f"Pipeline returned no viral moments. Creating a default clip.")
+                viral_moments = [{"start_time": 0.0, "end_time": min(command_config.min_duration, duration), "viral_score": 50.0}]
+
+        logger.info(f"Queuing {len(viral_moments)} video cuts for Render Engine...")
+        _publish_status(project_id, "analyzing", f"Criando plano de edição para {len(viral_moments)} cortes...", 80)
+        
+        subtitle_service = SubtitleService()
+        total_clips = len(viral_moments)
+        
+        clips_metadata = []
+        render_jobs = []
+
+        for i, moment in enumerate(viral_moments):
+            start = float(moment.get("start_time", 0.0))
+            end = float(moment.get("end_time", min(start + command_config.min_duration, duration)))
+            
+            if end - start < command_config.min_duration:
+                end = min(start + command_config.min_duration, duration)
+            
+            score = float(moment.get("viral_score", 0.0))
+            
+            subtitle_filename = file_path.replace(".mp4", f"_clip_{i+1}.ass")
+            
+            clip_words = []
+            for seg in segments:
+                if seg["start"] <= end and seg["end"] >= start:
+                    for word in seg.get("words", []):
+                        if word["start"] >= start and word["end"] <= end:
+                            clip_words.append(word)
+            
+            subtitle_path = ""
+            if command_config.subtitle_style.lower() != "none":
+                subtitle_path = subtitle_filename if subtitle_service.generate_ass_file(clip_words, start, subtitle_filename, command_config.subtitle_style) else ""
+            
+            keep_segments = []
+            if command_config.remove_silences and clip_words:
+                current_start = clip_words[0]["start"]
+                current_end = clip_words[0]["end"]
+                
+                for w in clip_words[1:]:
+                    gap = w["start"] - current_end
+                    if gap > 0.5:
+                        keep_segments.append([current_start, current_end])
+                        current_start = w["start"]
+                    current_end = w["end"]
+                keep_segments.append([current_start, current_end])
+
+            clip_title = moment.get("title", f"Clip {i+1}")
+            clip_desc = moment.get("description", f"Corte gerado por IA focado em {command_config.topic_focus}")
+
+            operations = []
+            clip_op = {
+                "type": "clip",
+                "start": start,
+                "end": end,
+                "score": score,
+                "title": clip_title,
+                "description": clip_desc
+            }
+            if keep_segments:
+                clip_op["keep_segments"] = keep_segments
+                
+            operations.append(clip_op)
+
+            if subtitle_path:
+                operations.append({
+                    "type": "subtitle",
+                    "file": subtitle_path,
+                    "style": command_config.subtitle_style
+                })
+
+            edit_plan = {
+                "project_id": project_id,
+                "original_file": file_path,
+                "video_format": command_config.video_format,
+                "remove_noise": command_config.remove_noise,
+                "operations": operations
+            }
+            render_jobs.append(edit_plan)
+
+            clips_metadata.append({
+                "title": clip_title,
+                "description": clip_desc,
+                "score": score,
+                "start_time": start,
+                "end_time": end
+            })
+
+        # Emite os metadados dos clipes para o Go salvar no banco antes de mandar pro render
+        clips_payload = json.dumps({
+            "project_id": project_id,
+            "clips": clips_metadata
+        })
+        r.publish("events:clips_ready", clips_payload)
+
+        # Envia os jobs para o render engine
+        for plan in render_jobs:
+            r.rpush("queue:render", json.dumps(plan))
+
+        logger.info(f"Project {project_id} successfully processed and queued for rendering!")
+        _publish_status(project_id, "rendering", "Plano de edição enviado para renderização na GPU...", 85)
+
+    except Exception as e:
+        logger.exception(f"Error processing project {project_id}: {str(e)}")
+        # Publish to events:failed
+        payload = json.dumps({"project_id": project_id, "status": "failed", "error": str(e)})
+        Redis.from_url(redis_url).publish("events:failed", payload)
+    finally:
+        # Cleanup temporary audio file
+        if audio_path and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup {audio_path}: {cleanup_error}")

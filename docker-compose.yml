@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: clipforge_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: clipforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+  redis:
+    image: redis:7-alpine
+    container_name: clipforge_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  gateway:
+    build:
+      context: ./backend-go
+      dockerfile: Dockerfile
+    container_name: clipforge_gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=clipforge
+      - AI_ENGINE_URL=http://ai-engine:8001
+    volumes:
+      - shared_uploads:/app/uploads
+    depends_on:
+      - redis
+      - db
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: clipforge_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
+    depends_on:
+      - gateway
+
+  ai-engine:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: clipforge_ai_engine
+    restart: always
+    volumes:
+      - ./backend:/app
+      - huggingface_cache:/root/.cache/huggingface
+      - shared_uploads:/app/uploads
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - HF_TOKEN=${HF_TOKEN:-}
+    command: python -m app.worker
+    depends_on:
+      - db
+      - redis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  render-engine:
+    build:
+      context: ./backend-render
+      dockerfile: Dockerfile
+    container_name: clipforge_render_engine
+    restart: always
+    volumes:
+      - shared_uploads:/app/uploads
+    environment:
+      - REDIS_URL=redis:6379
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
+    depends_on:
+      - db
+      - redis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  shared_uploads:
+  postgres_data:
+  redis_data:
+  huggingface_cache:

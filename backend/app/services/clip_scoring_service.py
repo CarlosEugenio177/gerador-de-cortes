@@ -1,0 +1,168 @@
+import re
+import logging
+from typing import List, Dict
+from app.services.llm import LLMService
+
+logger = logging.getLogger(__name__)
+
+class ClipScoringService:
+    def __init__(self, llm_service: LLMService):
+        self.llm_service = llm_service
+
+    def segment_transcript(self, segments: List[Dict], block_size: float = 15.0) -> List[Dict]:
+        """
+        Groups transcript segments into blocks of roughly `block_size` seconds.
+        """
+        blocks = []
+        if not segments:
+            return blocks
+
+        current_block = {"start_time": segments[0]["start"], "end_time": segments[0]["end"], "text": ""}
+        texts = []
+
+        for seg in segments:
+            if seg["start"] - current_block["start_time"] > block_size and texts:
+                current_block["text"] = " ".join(texts)
+                blocks.append(current_block)
+                current_block = {"start_time": seg["start"], "end_time": seg["end"], "text": ""}
+                texts = []
+            
+            texts.append(seg["text"].strip())
+            current_block["end_time"] = seg["end"]
+
+        if texts:
+            current_block["text"] = " ".join(texts)
+            blocks.append(current_block)
+
+        return blocks
+
+    def calculate_hook_score(self, text: str) -> float:
+        score = 0.0
+        text_lower = text.lower()
+        if "?" in text:
+            score += 30
+        if any(word in text_lower for word in ["você", "te", "como", "faça", "pare", "veja"]):
+            score += 20
+        # Check if first few words are strong
+        return min(score, 100.0)
+
+    def calculate_emotion_score(self, text: str) -> float:
+        score = 0.0
+        text_lower = text.lower()
+        if "!" in text:
+            score += 30
+        if any(word in text_lower for word in ["incrível", "absurdo", "loucura", "chocante", "pior", "melhor"]):
+            score += 40
+        return min(score, 100.0)
+
+    def calculate_curiosity_score(self, text: str) -> float:
+        score = 0.0
+        text_lower = text.lower()
+        if "por que" in text_lower or "porque" in text_lower:
+            score += 30
+        if any(word in text_lower for word in ["segredo", "motivo", "descubra", "você sabia", "verdade"]):
+            score += 40
+        return min(score, 100.0)
+
+    def score_blocks(self, blocks: List[Dict], topic_focus: str = "viral moments") -> List[Dict]:
+        """
+        Scores each 15-second block individually, considering the topic_focus.
+        """
+        scored_blocks = []
+        for block in blocks:
+            text = block["text"]
+            hook = self.calculate_hook_score(text)
+            emotion = self.calculate_emotion_score(text)
+            curiosity = self.calculate_curiosity_score(text)
+            
+            # Using LLM for classification / qualitative analysis
+            llm_score = self.llm_service.score_block(text, topic_focus)
+            
+            final_score = (hook + emotion + curiosity + llm_score) / 4.0
+            
+            scored_block = {
+                **block,
+                "hook_score": hook,
+                "emotion_score": emotion,
+                "curiosity_score": curiosity,
+                "llm_score": llm_score,
+                "final_score": final_score
+            }
+            scored_blocks.append(scored_block)
+            
+            logger.info(f"Block [{block['start_time']} - {block['end_time']}] - Final Score: {final_score:.2f}")
+
+        return scored_blocks
+
+    def merge_blocks(self, scored_blocks: List[Dict], min_duration: float = 30.0, max_duration: float = 60.0, top_k: int = 3) -> List[Dict]:
+        """
+        Merges adjacent high-scoring blocks into clips between 30 and 60 seconds.
+        Selects the top_k best clips.
+        """
+        if not scored_blocks:
+            return []
+
+        # Find the highest scoring starting points
+        scored_blocks.sort(key=lambda x: x["final_score"], reverse=True)
+        
+        clips = []
+        used_times = []
+
+        def is_overlapping(start, end):
+            for us, ue in used_times:
+                if start < ue and end > us:
+                    return True
+            return False
+
+        # Attempt to build a clip starting from the highest scoring blocks
+        original_blocks = sorted(scored_blocks, key=lambda x: x["start_time"])
+        
+        for base_block in scored_blocks:
+            if len(clips) >= top_k:
+                break
+                
+            start_time = base_block["start_time"]
+            
+            # Find index in original sequence
+            idx = next(i for i, b in enumerate(original_blocks) if b["start_time"] == start_time)
+            
+            current_end = original_blocks[idx]["end_time"]
+            current_score = original_blocks[idx]["final_score"]
+            block_count = 1
+            
+            if is_overlapping(start_time, current_end):
+                continue
+                
+            # Expand forward
+            for j in range(idx + 1, len(original_blocks)):
+                next_block = original_blocks[j]
+                if next_block["end_time"] - start_time > max_duration + 10.0:
+                    break
+                    
+                if is_overlapping(next_block["start_time"], next_block["end_time"]):
+                    break
+                    
+                current_end = next_block["end_time"]
+                current_score += next_block["final_score"]
+                block_count += 1
+                
+            duration = current_end - start_time
+            if duration >= min_duration - 10.0:
+                avg_score = current_score / block_count
+                clips.append({
+                    "start_time": start_time,
+                    "end_time": current_end,
+                    "viral_score": avg_score
+                })
+                used_times.append((start_time, current_end))
+                
+        # Fallback if no clip reached min_duration
+        if not clips and scored_blocks:
+            best = scored_blocks[0]
+            clips.append({
+                "start_time": best["start_time"],
+                "end_time": best["start_time"] + min_duration,
+                "viral_score": best["final_score"]
+            })
+            
+        return clips
