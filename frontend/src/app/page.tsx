@@ -16,7 +16,7 @@ interface Project {
   status: string;
   original_file: string;
   created_at: string;
-  Clips?: Clip[];
+  clips?: Clip[];
 }
 
 export default function DashboardPage() {
@@ -144,10 +144,10 @@ export default function DashboardPage() {
                     <Calendar className="w-3 h-3 mr-1" />
                     {new Date(proj.created_at).toLocaleDateString()}
                   </div>
-                  {proj.Clips && proj.Clips.length > 0 && (
+                  {proj.clips && proj.clips.length > 0 && (
                     <div className="flex items-center text-orange-500/80 font-bold">
                       <Video className="w-3 h-3 mr-1" />
-                      {proj.Clips.length} Clips
+                      {proj.clips.length} Clips
                     </div>
                   )}
                 </div>
