@@ -86,6 +86,12 @@ func main() {
 	projects.Get("/:id", handlers.GetProject)
 	projects.Delete("/:id", handlers.DeleteProject)
 	projects.Post("/:id/reprocess", handlers.ReprocessProject)
+	projects.Post("/:id/cancel", handlers.CancelProject)
+
+	// Clips
+	clips := v1.Group("/clips")
+	clips.Get("/", handlers.GetAllClips)
+	clips.Delete("/:id", handlers.DeleteClip)
 
 	// Listen
 	log.Printf("Starting API Gateway on port %s...", cfg.Port)

@@ -7,7 +7,8 @@ import (
 
 type Clip struct {
 	ID          uint           `gorm:"primaryKey" json:"id"`
-	ProjectID   uint           `gorm:"index" json:"project_id"`
+	ProjectID   *uint          `gorm:"index" json:"project_id"`
+	ProjectName string         `gorm:"size:255" json:"project_name"`
 	Title       string         `gorm:"size:255" json:"title"`
 	Description string         `gorm:"type:text" json:"description,omitempty"`
 	VideoURL    string         `gorm:"column:file_path;size:500" json:"video_url"`

@@ -90,9 +90,14 @@ func handleClipsReady(payload EventPayload, rawMsg string) {
 	
 	repository.DB.Model(&models.Project{}).Where("id = ?", projectID).Update("status", "rendering")
 
+	var project models.Project
+	repository.DB.First(&project, projectID)
+
 	for _, c := range payload.Clips {
+		pid := projectID
 		clip := models.Clip{
-			ProjectID:   projectID,
+			ProjectID:   &pid,
+			ProjectName: project.Title,
 			Title:       c.Title,
 			Description: c.Description,
 			Score:       c.Score,

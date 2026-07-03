@@ -83,8 +83,12 @@ func DeleteProject(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Project not found"})
 	}
 
-	// Tell GORM to also delete the associated Clips (avoids foreign key constraints)
-	if err := repository.DB.Select("Clips").Delete(&project).Error; err != nil {
+	// Unlink clips instead of deleting them
+	if err := repository.DB.Model(&models.Clip{}).Where("project_id = ?", id).Update("project_id", nil).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to unlink clips from project"})
+	}
+
+	if err := repository.DB.Delete(&project).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete project"})
 	}
 
