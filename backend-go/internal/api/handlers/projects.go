@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -169,7 +171,8 @@ func TranscribeProject(c *fiber.Ctx) error {
 		"file_path":  project.OriginalFile,
 		"type":       "transcribe",
 	}
-	worker.RedisClient.RPush(worker.Ctx, "queue:analyze", payload)
+	bytes, _ := json.Marshal(payload)
+	worker.RedisClient.RPush(context.Background(), "queue:analyze", string(bytes))
 
 	return c.JSON(fiber.Map{"status": "transcribing"})
 }
@@ -242,7 +245,8 @@ func RenderCustomProject(c *fiber.Ctx) error {
 		"type":         "render_custom",
 		"style_config": styleConfig,
 	}
-	worker.RedisClient.RPush(worker.Ctx, "queue:analyze", payload)
+	bytes, _ := json.Marshal(payload)
+	worker.RedisClient.RPush(context.Background(), "queue:analyze", string(bytes))
 
 	return c.JSON(fiber.Map{"status": "processing"})
 }
