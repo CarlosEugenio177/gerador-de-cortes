@@ -2,12 +2,14 @@ import re
 import logging
 from typing import List, Dict
 from app.services.llm import LLMService
+from app.services.video_analyzer import VisualScoringService
 
 logger = logging.getLogger(__name__)
 
 class ClipScoringService:
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
+        self.visual_service = VisualScoringService()
 
     def segment_transcript(self, segments: List[Dict], block_size: float = 15.0) -> List[Dict]:
         """
@@ -64,9 +66,9 @@ class ClipScoringService:
             score += 40
         return min(score, 100.0)
 
-    def score_blocks(self, blocks: List[Dict], topic_focus: str = "viral moments") -> List[Dict]:
+    def score_blocks(self, blocks: List[Dict], topic_focus: str = "viral moments", video_path: str = None) -> List[Dict]:
         """
-        Scores each 15-second block individually, considering the topic_focus.
+        Scores each 15-second block individually, considering the topic_focus and visual framing.
         """
         scored_blocks = []
         for block in blocks:
@@ -78,7 +80,14 @@ class ClipScoringService:
             # Using LLM for classification / qualitative analysis
             llm_score = self.llm_service.score_block(text, topic_focus)
             
-            final_score = (hook + emotion + curiosity + llm_score) / 4.0
+            visual_score = 50.0
+            if video_path:
+                try:
+                    visual_score = self.visual_service.analyze_block_visuals(video_path, block["start_time"], block["end_time"])
+                except Exception as e:
+                    logger.error(f"Visual scoring failed for block {block['start_time']}: {e}")
+            
+            final_score = (hook + emotion + curiosity + llm_score + visual_score) / 5.0
             
             scored_block = {
                 **block,
@@ -86,6 +95,7 @@ class ClipScoringService:
                 "emotion_score": emotion,
                 "curiosity_score": curiosity,
                 "llm_score": llm_score,
+                "visual_score": visual_score,
                 "final_score": final_score
             }
             scored_blocks.append(scored_block)

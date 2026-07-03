@@ -121,11 +121,11 @@ async def run_process_video(project_id: int, file_path: str, prompt: str) -> Non
             
         if not viral_moments:
             logger.info("Segmenting transcript into blocks...")
-            _publish_status(project_id, "analyzing", f"Analisando foco: '{command_config.topic_focus}'...", 50)
+            _publish_status(project_id, "analyzing", f"Analisando texto e quadros do vídeo visualmente...", 50)
             blocks = scoring_service.segment_transcript(segments, block_size=15.0)
             
-            logger.info("Scoring blocks...")
-            scored_blocks = scoring_service.score_blocks(blocks, topic_focus=command_config.topic_focus)
+            logger.info("Scoring blocks with text and visual analysis...")
+            scored_blocks = scoring_service.score_blocks(blocks, topic_focus=command_config.topic_focus, video_path=file_path)
             
             logger.info("Merging and selecting best clips...")
             

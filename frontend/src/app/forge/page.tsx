@@ -34,9 +34,11 @@ function ForgeContent() {
   }, [router]);
 
   useEffect(() => {
-    const idToFetch = queryProjectId || projectId;
-    if (idToFetch) {
-      fetch(`http://localhost:8000/api/v1/projects/${idToFetch}`)
+    // Only fetch if we have an explicit queryProjectId
+    // DO NOT fallback to projectId from store if queryProjectId is null, 
+    // because that means the user wants a NEW forge, and the store's projectId is just leftover from the previous session.
+    if (queryProjectId) {
+      fetch(`http://localhost:8000/api/v1/projects/${queryProjectId}`)
         .then(res => res.json())
         .then(data => {
           if (data && data.id) {
@@ -60,7 +62,7 @@ function ForgeContent() {
         })
         .catch(err => console.error("Failed to rehydrate project", err));
     }
-  }, [queryProjectId, projectId, setProject, updateProgress, setClips, setVideoFile]);
+  }, [queryProjectId, setProject, updateProgress, setClips, setVideoFile]);
 
   useEffect(() => {
     if (processingStatus === 'completed' && projectId) {
