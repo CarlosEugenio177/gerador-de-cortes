@@ -250,3 +250,10 @@ Aplicação das Operações via Timeline Renderer (FFmpeg filter_complex)
 * **Aceleração por GPU Obrigatória:** Injeção forçada do encoder `-c:v h264_nvenc` e `-preset fast` no FFmpeg da pipeline Go para derreter o tempo de processamento.
 * **Rehidratação Inteligente (Anti-F5):** Blindagem do `<Suspense>` no Next.js (`page.tsx`) forçando um `fetch()` ativo contra a API logo no mount do frontend. Refreshs constantes agora restauram perfeitamente as telas e a porcentagem.
 * **Remoção de Mocks de UI:** Títulos estáticos (`ClipForge Edit`) removidos da home. A forja agora herda processualmente os nomes dos arquivos originais pelo `videoFile.name`.
+
+### 2026-07-03
+#### Adicionado / Modificado
+* **Modo Edição (Advanced Subtitle Editor):** Implementação de um editor completo no frontend (`TranscriptEditor.tsx` e `StyleEditor.tsx`) permitindo edição palavra-por-palavra e parametrização de estilos (Cor, Fonte, Animações Pop/Karaoke, Preset Hormozi/Netflix).
+* **Desacoplamento do Pipeline de IA:** O fluxo de legenda agora é separado em duas etapas manuais controláveis pelo usuário via Go Gateway e Celery: `POST /transcribe` (gera o texto base) e `POST /render-custom` (aplica estilos e renderiza o `.ass` hardcoded).
+* **Eventos WebSockets Bi-Direcionais:** O Gateway Go e Frontend foram atualizados para trafegar ativamente a string completa da transcrição pelo socket quando o Python emite `events:transcript_ready`, preenchendo o Zustand instantaneamente.
+* **Refatoração do EditorLayout:** O arquivo principal do editor de estúdio dividiu seu Layout Central em "Modo Cortes" (visualizar os 3 highlights de IA extraídos) e "Modo Edição" (Editor UI Pro com três painéis: ferramentas, player central, corretor semântico de palavras).
