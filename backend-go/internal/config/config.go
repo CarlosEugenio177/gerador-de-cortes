@@ -23,7 +23,7 @@ func LoadConfig() *Config {
 	dbUrl := os.Getenv("DATABASE_URL")
 	if dbUrl == "" {
 		// Use default identical to Python backend but without asyncpg
-		dbUrl = "host=db user=postgres password=password123 dbname=clipforge port=5432 sslmode=disable"
+		dbUrl = "host=db user=postgres password=postgres dbname=clipforge port=5432 sslmode=disable"
 	}
 
 	redisUrl := os.Getenv("REDIS_URL")
@@ -38,7 +38,7 @@ func LoadConfig() *Config {
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		jwtSecret = "supersecretjwtsecretkey12345!"
+		jwtSecret = "dev-secret-key-do-not-use-in-prod"
 	}
 
 	return &Config{
