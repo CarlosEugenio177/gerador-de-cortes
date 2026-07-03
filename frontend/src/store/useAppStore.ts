@@ -191,7 +191,7 @@ export const useAppStore = create<AppState>()(
             console.error("Cancel failed", e);
           }
         }
-        set({ processingStatus: 'idle', statusMessage: 'Cancelled', progress: 0, projectId: null });
+        set({ processingStatus: 'idle', statusMessage: 'Cancelled', progress: 0 });
       },
     }),
     {

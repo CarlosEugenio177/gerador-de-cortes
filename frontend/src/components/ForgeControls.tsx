@@ -53,7 +53,7 @@ export function ForgeControls() {
   const { 
     isThinking, setThinking, videoFile, setProject, updateProgress, processingStatus,
     forgeAspectRatios, forgeSubtitleStyle, forgeMode, forgeClipQuantity, forgeDurationMins, forgeLanguage, setForgeSettings,
-    projectName, setProjectName, projectId, reprocessProject, cancelProcessing
+    projectName, setProjectName, projectId, reprocessProject, cancelProcessing, clips
   } = useAppStore();
 
   const t = i18n[forgeLanguage];
@@ -145,15 +145,19 @@ export function ForgeControls() {
       {/* Header */}
       <div className="h-16 flex items-center justify-between px-6 border-b border-zinc-900 z-10 bg-black sticky top-0 shrink-0 shadow-md">
         <div className="flex items-center space-x-3">
-          {projectId && (
-            <button
-              onClick={() => window.location.href = `/editor/${projectId}`}
-              className="p-1 hover:bg-zinc-900 rounded transition-colors text-zinc-400 hover:text-white"
-              title="Voltar aos cortes"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-          )}
+          <button
+            onClick={() => {
+              if (projectId && clips.length > 0) {
+                window.location.href = `/editor/${projectId}`;
+              } else {
+                window.location.href = '/';
+              }
+            }}
+            className="p-1 hover:bg-zinc-900 rounded transition-colors text-zinc-400 hover:text-white"
+            title={projectId && clips.length > 0 ? "Voltar ao Studio" : "Voltar ao Dashboard"}
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
           <div className="flex items-center">
             <Hammer className="w-4 h-4 text-orange-500 mr-2" />
             <h2 className="text-xs font-black text-white tracking-widest uppercase">{t.header}</h2>
