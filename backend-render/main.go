@@ -181,13 +181,20 @@ func main() {
 			ffmpegArgs = append(ffmpegArgs, "-af", afFilters)
 		}
 
-		// GPU NVENC Encoder Enforcement
 		ffmpegArgs = append(ffmpegArgs, 
 			"-c:v", "h264_nvenc",
 			"-preset", "fast",
 			"-c:a", "aac",
 			outputPath,
 		)
+
+		// Optimization: Check if the exact same file already exists (from a previous process)
+		if _, err := os.Stat(outputPath); err == nil {
+			log.Printf("Optimization: File %s already exists. Skipping GPU render.", outputPath)
+			rdb.Del(ctx, lockKey)
+			publishClipCompleted(rdb, plan.ProjectID, []string{outputPath}, clipTitle)
+			continue
+		}
 
 		cmd := exec.Command("ffmpeg", ffmpegArgs...)
 		
@@ -203,6 +210,7 @@ func main() {
 		}
 
 		log.Printf("Project %d - Clip '%s' completed successfully.", plan.ProjectID, clipTitle)
+		rdb.Del(ctx, lockKey)
 		
 		publishClipCompleted(rdb, plan.ProjectID, []string{outputPath}, clipTitle)
 	}

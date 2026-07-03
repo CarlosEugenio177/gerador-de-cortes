@@ -67,7 +67,7 @@ interface AppState {
   toggleAdvancedMode: () => void;
   setEditPlan: (plan: EditOperation[]) => void;
   setForgeSettings: (settings: Partial<Pick<AppState, 'forgeAspectRatios' | 'forgeSubtitleStyle' | 'forgeMode' | 'forgeClipQuantity' | 'forgeDurationMins' | 'forgeLanguage'>>) => void;
-  reprocessProject: (projectId: string) => Promise<void>;
+  reprocessProject: (projectId: string, overridePrompt?: string) => Promise<void>;
   cancelProcessing: () => Promise<void>;
 }
 
@@ -155,16 +155,20 @@ export const useAppStore = create<AppState>()(
 
       setForgeSettings: (settings) => set((state) => ({ ...state, ...settings })),
 
-      reprocessProject: async (projectId: string) => {
+      reprocessProject: async (projectId: string, overridePrompt?: string) => {
         set({ processingStatus: 'processing', statusMessage: 'Starting AI reprocessing...', progress: 0 });
         try {
           const state = get();
           
-          let promptInstruction = `video_formats: ${state.forgeAspectRatios.join(",")}, subtitle_style: ${state.forgeSubtitleStyle}, mode: ${state.forgeMode}`;
-          if (state.forgeMode === 'FULL EDIT') {
-            promptInstruction += `\n\nFULL_VIDEO_EDIT`;
-          } else if (state.forgeMode !== 'MANUAL CUT') {
-            promptInstruction += `\n\nduration_request: ${state.forgeDurationMins} minutes\nclip_quantity: ${state.forgeClipQuantity}`;
+          let promptInstruction = overridePrompt;
+          
+          if (!promptInstruction) {
+            promptInstruction = `video_formats: ${state.forgeAspectRatios.join(",")}, subtitle_style: ${state.forgeSubtitleStyle}, mode: ${state.forgeMode}`;
+            if (state.forgeMode === 'FULL EDIT') {
+              promptInstruction += `\n\nFULL_VIDEO_EDIT`;
+            } else if (state.forgeMode !== 'MANUAL CUT') {
+              promptInstruction += `\n\nduration_request: ${state.forgeDurationMins} minutes\nclip_quantity: ${state.forgeClipQuantity}`;
+            }
           }
 
           const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";

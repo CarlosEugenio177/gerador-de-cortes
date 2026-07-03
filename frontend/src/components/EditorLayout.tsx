@@ -10,6 +10,7 @@ export function EditorLayout() {
   const { clips, selectedClip, setSelectedClip, showOssPopup, setShowOssPopup, projectId, reprocessProject, processingStatus, videoUrl } = useAppStore();
   
   const [editorMode, setEditorMode] = useState<'clips' | 'full_video'>('clips');
+  const [activeTool, setActiveTool] = useState<string | null>(null);
 
   const currentVideoSrc = (editorMode === 'clips' 
     ? (selectedClip ? `http://localhost:8000/${selectedClip.video_url}` : undefined)
@@ -161,24 +162,51 @@ export function EditorLayout() {
                 <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
                   <h3 className="text-zinc-200 text-sm font-bold mb-2">Gerar Legendas</h3>
                   <p className="text-zinc-500 text-xs mb-4">Transcreve o vídeo completo e sobrepõe legendas dinâmicas estilo TikTok/Reels.</p>
-                  <button className="w-full bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold py-2 rounded transition-colors">
-                    Aplicar Legendas
+                  <button 
+                    disabled={processingStatus === 'processing' || !projectId}
+                    onClick={() => {
+                      setActiveTool('subtitles');
+                      if (projectId) reprocessProject(projectId, "FULL_VIDEO_EDIT\nsubtitle_style: default\nvideo_formats: 16:9");
+                    }}
+                    className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors flex justify-center items-center gap-2"
+                  >
+                    {processingStatus === 'processing' && activeTool === 'subtitles' ? (
+                      <><RefreshCw className="w-3 h-3 animate-spin" /> Processando...</>
+                    ) : 'Aplicar Legendas'}
                   </button>
                 </div>
 
                 <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
                   <h3 className="text-zinc-200 text-sm font-bold mb-2">Remoção de Silêncio</h3>
                   <p className="text-zinc-500 text-xs mb-4">Detecta e corta automaticamente buracos de áudio e pausas longas.</p>
-                  <button className="w-full bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold py-2 rounded transition-colors">
-                    Remover Silêncios
+                  <button 
+                    disabled={processingStatus === 'processing' || !projectId}
+                    onClick={() => {
+                      setActiveTool('silences');
+                      if (projectId) reprocessProject(projectId, "FULL_VIDEO_EDIT\nremove_silences: true\nsubtitle_style: none\nvideo_formats: 16:9");
+                    }}
+                    className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors flex justify-center items-center gap-2"
+                  >
+                    {processingStatus === 'processing' && activeTool === 'silences' ? (
+                      <><RefreshCw className="w-3 h-3 animate-spin" /> Processando...</>
+                    ) : 'Remover Silêncios'}
                   </button>
                 </div>
 
                 <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4">
                   <h3 className="text-zinc-200 text-sm font-bold mb-2">Filtro de Ruído</h3>
                   <p className="text-zinc-500 text-xs mb-4">Aplica filtro de áudio por IA para isolar a voz e remover chiados de fundo.</p>
-                  <button className="w-full bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold py-2 rounded transition-colors">
-                    Limpar Áudio
+                  <button 
+                    disabled={processingStatus === 'processing' || !projectId}
+                    onClick={() => {
+                      setActiveTool('noise');
+                      if (projectId) reprocessProject(projectId, "FULL_VIDEO_EDIT\nremove_noise: true\nsubtitle_style: none\nvideo_formats: 16:9");
+                    }}
+                    className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors flex justify-center items-center gap-2"
+                  >
+                    {processingStatus === 'processing' && activeTool === 'noise' ? (
+                      <><RefreshCw className="w-3 h-3 animate-spin" /> Processando...</>
+                    ) : 'Limpar Áudio'}
                   </button>
                 </div>
               </div>
