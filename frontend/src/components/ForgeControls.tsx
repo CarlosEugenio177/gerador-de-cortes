@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Flame, Hammer, Scissors, Video, Settings, Play, Type, Settings2, ShieldAlert, FileText } from "lucide-react";
+import { Flame, Hammer, Scissors, Video, Settings, Play, Type, Settings2, ShieldAlert, FileText, ChevronLeft } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 
 const i18n = {
@@ -144,9 +144,20 @@ export function ForgeControls() {
     <div className="flex flex-col h-full bg-[#050505] relative">
       {/* Header */}
       <div className="h-16 flex items-center justify-between px-6 border-b border-zinc-900 z-10 bg-black sticky top-0 shrink-0 shadow-md">
-        <div className="flex items-center">
-          <Hammer className="w-4 h-4 text-orange-500 mr-2" />
-          <h2 className="text-xs font-black text-white tracking-widest uppercase">{t.header}</h2>
+        <div className="flex items-center space-x-3">
+          {projectId && (
+            <button
+              onClick={() => window.location.href = `/editor/${projectId}`}
+              className="p-1 hover:bg-zinc-900 rounded transition-colors text-zinc-400 hover:text-white"
+              title="Voltar aos cortes"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          )}
+          <div className="flex items-center">
+            <Hammer className="w-4 h-4 text-orange-500 mr-2" />
+            <h2 className="text-xs font-black text-white tracking-widest uppercase">{t.header}</h2>
+          </div>
         </div>
         <div className="flex space-x-1 border border-zinc-800 rounded p-0.5 bg-black">
           <button 

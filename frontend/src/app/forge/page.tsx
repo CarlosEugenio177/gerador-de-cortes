@@ -41,7 +41,11 @@ function ForgeContent() {
         .then(data => {
           if (data && data.id) {
             setProject(data.id.toString());
-            updateProgress(data.status, "Sincronizado com o servidor", 50);
+            if (data.status === 'processing') {
+              updateProgress(data.status, "Sincronizado com o servidor", 50);
+            } else {
+              updateProgress('idle', '', 0);
+            }
             
             if (data.original_file) {
               const filename = data.original_file.split('/').pop() || data.original_file.split('\\').pop();

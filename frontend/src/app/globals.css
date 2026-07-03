@@ -22,7 +22,6 @@ body {
   color: var(--foreground);
   background: var(--background);
   font-family: var(--font-sans), sans-serif;
-  overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
