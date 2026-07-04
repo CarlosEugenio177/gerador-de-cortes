@@ -10,6 +10,7 @@ class ClipScoringService:
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
         self.visual_service = VisualScoringService()
+        self.llm_disabled = False
 
     def segment_transcript(self, segments: List[Dict], block_size: float = 15.0) -> List[Dict]:
         """
@@ -77,8 +78,19 @@ class ClipScoringService:
             emotion = self.calculate_emotion_score(text)
             curiosity = self.calculate_curiosity_score(text)
             
-            # Using LLM for classification / qualitative analysis
-            llm_score = self.llm_service.score_block(text, topic_focus)
+            # Using LLM for classification / qualitative analysis ONLY if NLP score is decent and not disabled
+            llm_score = 0.0
+            nlp_score = hook + emotion + curiosity
+            
+            if not self.llm_disabled and nlp_score >= 30.0:
+                try:
+                    llm_score = self.llm_service.score_block(text, topic_focus)
+                except Exception as e:
+                    logger.warning(f"CUDA/LLM Error detected during scoring: {e}. Circuit Breaker activated! LLM disabled for remaining blocks.")
+                    self.llm_disabled = True
+            elif self.llm_disabled:
+                # LLM failed previously, fallback to boosting NLP to compensate
+                llm_score = nlp_score / 3.0
             
             visual_score = 50.0
             if video_path:
@@ -87,7 +99,11 @@ class ClipScoringService:
                 except Exception as e:
                     logger.error(f"Visual scoring failed for block {block['start_time']}: {e}")
             
-            final_score = (hook + emotion + curiosity + llm_score + visual_score) / 5.0
+            # Recalculate based on non-zero metrics if LLM is disabled to maintain fair weights
+            if self.llm_disabled:
+                final_score = (hook + emotion + curiosity + visual_score) / 4.0
+            else:
+                final_score = (hook + emotion + curiosity + llm_score + visual_score) / 5.0
             
             scored_block = {
                 **block,
