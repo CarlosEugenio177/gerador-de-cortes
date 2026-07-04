@@ -50,6 +50,8 @@ def start_worker():
                     
                     print(f">>> Received AI Task ({task_type}) for Project ID: {project_id}")
                     
+                    proxy_path = payload.get("proxy_path")
+                    
                     if task_type == "transcribe":
                         from app.workers.tasks import run_transcribe_video
                         asyncio.run(run_transcribe_video(project_id, file_path))
@@ -58,7 +60,7 @@ def start_worker():
                         style_config = payload.get("style_config", {})
                         asyncio.run(run_render_custom(project_id, file_path, style_config))
                     else:
-                        asyncio.run(run_process_video(project_id, file_path, prompt, audio_path))
+                        asyncio.run(run_process_video(project_id, file_path, prompt, audio_path, proxy_path))
                         
                     print(f"<<< Completed Task ({task_type}) for Project ID: {project_id}")
                     r.xack(stream_name, group_name, message_id)

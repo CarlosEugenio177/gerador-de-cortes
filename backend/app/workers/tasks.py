@@ -27,7 +27,7 @@ def _publish_status(project_id: int, status: str, message: str, progress: int = 
     except Exception as e:
         logger.error(f"Failed to publish status to Redis: {e}")
 
-async def run_process_video(project_id: int, file_path: str, prompt: str, pre_extracted_audio: str = None) -> None:
+async def run_process_video(project_id: int, file_path: str, prompt: str, pre_extracted_audio: str = None, proxy_path: str = None) -> None:
     """Async task executor implementing the DB-less AI pipeline."""
     logger.info(f"Starting processing pipeline for project {project_id}")
     
@@ -146,7 +146,8 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
                 blocks = scoring_service.segment_transcript(segments, block_size=15.0)
                 
                 logger.info("Scoring blocks with text and visual analysis...")
-                scored_blocks = scoring_service.score_blocks(blocks, topic_focus=command_config.topic_focus, video_path=file_path)
+                video_for_analysis = proxy_path if proxy_path and os.path.exists(proxy_path) else file_path
+                scored_blocks = scoring_service.score_blocks(blocks, topic_focus=command_config.topic_focus, video_path=video_for_analysis)
                 
                 logger.info("Merging and selecting best clips...")
                 
