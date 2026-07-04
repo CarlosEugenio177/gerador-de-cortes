@@ -38,11 +38,19 @@ services:
       - DB_PASSWORD=postgres
       - DB_NAME=clipforge
       - AI_ENGINE_URL=http://ai-engine:8001
+      - NVIDIA_DRIVER_CAPABILITIES=compute,video,utility
     volumes:
       - shared_uploads:/app/uploads
     depends_on:
       - redis
       - db
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   frontend:
     build:

@@ -19,11 +19,11 @@ RUN go get github.com/gofiber/contrib/websocket && go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o gateway ./cmd/server/main.go
 
 # Imagem de produção enxuta
-FROM alpine:latest
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
-RUN apk --no-cache add ca-certificates tzdata ffmpeg
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata ffmpeg && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/gateway .
 
