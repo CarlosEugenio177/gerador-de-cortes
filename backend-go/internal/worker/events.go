@@ -9,6 +9,8 @@ import (
 	"clipforge-gateway/internal/models"
 	"clipforge-gateway/internal/repository"
 	websocket_pkg "clipforge-gateway/pkg/websocket"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type EventPayload struct {
