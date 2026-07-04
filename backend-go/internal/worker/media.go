@@ -55,8 +55,8 @@ func PreprocessVideoAsync(projectID uint, originalPath string, prompt string) {
 
 	// 2. Create Proxy (480p, fast encode)
 	log.Printf("Creating proxy video for project %d...", projectID)
-	// ffmpeg -i original.mp4 -vf scale=-2:480 -c:v libx264 -preset veryfast -crf 28 -c:a aac -b:a 128k proxy.mp4
-	proxyCmd := exec.Command("ffmpeg", "-y", "-i", originalPath, "-vf", "scale=-2:480", "-c:v", "libx264", "-preset", "veryfast", "-crf", "28", "-c:a", "aac", "-b:a", "128k", proxyPath)
+	// ffmpeg -i original.mp4 -vf scale=-2:360 -c:v libx264 -preset ultrafast -threads 2 -crf 28 -c:a aac -b:a 128k proxy.mp4
+	proxyCmd := exec.Command("ffmpeg", "-y", "-i", originalPath, "-vf", "scale=-2:360", "-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-crf", "28", "-c:a", "aac", "-b:a", "128k", proxyPath)
 	if err := proxyCmd.Run(); err != nil {
 		log.Printf("Error creating proxy for project %d: %v", projectID, err)
 		failProject(projectID, "Failed to create proxy video")

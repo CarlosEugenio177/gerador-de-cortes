@@ -97,3 +97,25 @@ class TranscriptionService:
             
         logger.info(f"Transcription completed with {len(results)} segments.")
         return results
+
+    def unload_model(self) -> None:
+        """
+        Unload the Faster-Whisper model and force Garbage Collection on VRAM.
+        This is critical to free up the GPU for the Ollama LLM.
+        """
+        if self.model is not None:
+            logger.info("Unloading Whisper model to free up VRAM...")
+            del self.model
+            self.model = None
+            
+            import gc
+            gc.collect()
+            
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass
+            
+            logger.info("Whisper model successfully unloaded from VRAM.")

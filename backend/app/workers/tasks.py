@@ -68,6 +68,9 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
             # Cache the transcription
             with open(transcript_file, "w", encoding="utf-8") as f:
                 json.dump(segments, f, ensure_ascii=False)
+                
+        # Force garbage collection of VRAM before starting LLM
+        transcription_service.unload_model()
 
         duration = segments[-1]["end"]
         
