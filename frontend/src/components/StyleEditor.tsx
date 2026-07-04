@@ -76,21 +76,21 @@ export function StyleEditor() {
       <div className="p-4 border-t border-zinc-900 shrink-0 space-y-3 bg-[#0a0a0a]">
         {!transcript ? (
           <button 
-            disabled={processingStatus === 'transcribing'}
+            disabled={processingStatus === 'TRANSCRIBING'}
             onClick={() => extractTranscript(projectId)}
             className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-white text-xs font-bold py-3 rounded transition-colors flex justify-center items-center gap-2"
           >
-            {processingStatus === 'transcribing' ? (
+            {processingStatus === 'TRANSCRIBING' ? (
               <><RefreshCw className="w-4 h-4 animate-spin" /> Gerando Transcrição...</>
             ) : '1. Gerar Transcrição'}
           </button>
         ) : (
           <button 
-            disabled={processingStatus === 'processing'}
+            disabled={processingStatus === 'PREPROCESSING'}
             onClick={() => renderCustomProject(projectId)}
             className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 disabled:opacity-50 text-white text-xs font-bold py-3 rounded transition-colors flex justify-center items-center gap-2 shadow-[0_0_15px_rgba(234,88,12,0.3)]"
           >
-            {processingStatus === 'processing' ? (
+            {processingStatus === 'PREPROCESSING' ? (
               <><RefreshCw className="w-4 h-4 animate-spin" /> Renderizando...</>
             ) : (
               <><Play className="w-4 h-4" /> 2. Aplicar & Renderizar</>

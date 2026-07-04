@@ -30,7 +30,7 @@ export const useWebSocket = (projectId: string | null) => {
         if (data.status) {
           updateProgress(data.status, data.message || '', data.progress || 0);
 
-          if (data.status === 'completed') {
+          if (data.status === 'COMPLETED') {
             // Fetch project to get clips
             try {
               const res = await fetch(`http://localhost:8000/api/v1/projects/${projectId}`);

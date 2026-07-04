@@ -39,10 +39,12 @@ type CeleryTask struct {
 }
 
 // DispatchExtractClips sends a task to the Python worker via queue:analyze
-func DispatchExtractClips(projectID uint, videoPath string, prompt string) error {
+func DispatchExtractClips(projectID uint, videoPath string, proxyPath string, audioPath string, prompt string) error {
 	payload := map[string]interface{}{
 		"project_id": projectID,
 		"file_path":  videoPath,
+		"proxy_path": proxyPath,
+		"audio_path": audioPath,
 		"prompt":     prompt,
 	}
 	
@@ -51,11 +53,16 @@ func DispatchExtractClips(projectID uint, videoPath string, prompt string) error
 		return err
 	}
 
-	err = RedisClient.RPush(context.Background(), "queue:analyze", string(bytes)).Err()
+	err = RedisClient.XAdd(context.Background(), &redis.XAddArgs{
+		Stream: "stream:analyze",
+		Values: map[string]interface{}{
+			"payload": string(bytes),
+		},
+	}).Err()
 	if err != nil {
-		log.Printf("Failed to dispatch task: %v\n", err)
+		log.Printf("Failed to dispatch task to stream: %v\n", err)
 		return err
 	}
-	log.Printf("Task dispatched for project %d to queue:analyze\n", projectID)
+	log.Printf("Task dispatched for project %d to stream:analyze\n", projectID)
 	return nil
 }

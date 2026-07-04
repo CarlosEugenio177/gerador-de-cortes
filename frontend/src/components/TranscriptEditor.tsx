@@ -40,7 +40,7 @@ export function TranscriptEditor() {
                     type="text"
                     value={w.word}
                     onChange={(e) => updateTranscriptWord(segmentIndex, wordIndex, e.target.value)}
-                    disabled={processingStatus === 'processing'}
+                    disabled={processingStatus === 'ANALYZING'}
                     className="bg-zinc-900 hover:bg-zinc-800 focus:bg-zinc-800 border border-transparent focus:border-orange-500 text-zinc-300 text-sm px-1 py-0.5 rounded outline-none transition-colors w-auto min-w-[30px]"
                     style={{ width: `${Math.max(w.word.length, 1)}ch` }}
                   />

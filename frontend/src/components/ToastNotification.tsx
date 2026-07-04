@@ -9,19 +9,19 @@ export function ToastNotification() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (processingStatus === 'failed') {
+    if (processingStatus === 'FAILED') {
       setVisible(true);
       // Auto-hide after 8 seconds
       const t = setTimeout(() => {
         setVisible(false);
         // We delay the state reset so the fade out animation completes
-        setTimeout(() => updateProgress('idle', '', 0), 300);
+        setTimeout(() => updateProgress('IDLE', '', 0), 300);
       }, 8000);
       return () => clearTimeout(t);
     }
   }, [processingStatus, statusMessage, updateProgress]);
 
-  if (!visible && processingStatus !== 'failed') return null;
+  if (!visible && processingStatus !== 'FAILED') return null;
 
   return (
     <div 
@@ -36,7 +36,7 @@ export function ToastNotification() {
         <button 
           onClick={() => { 
             setVisible(false); 
-            setTimeout(() => updateProgress('idle', '', 0), 300); 
+            setTimeout(() => updateProgress('IDLE', '', 0), 300); 
           }}
           className="text-zinc-500 hover:text-white transition-colors"
         >

@@ -94,12 +94,12 @@ export function MediaViewer() {
                 </div>
                 
                 {/* Status Badge */}
-                {processingStatus !== 'idle' && (
-                  <div className="flex items-center px-3 py-1 bg-[#0a0a0a] border border-zinc-800 rounded text-xs font-mono">
-                    <div className={`w-1.5 h-1.5 rounded-full ${processingStatus === 'completed' ? 'bg-green-500' : 'bg-white animate-pulse'} mr-2`} />
-                    {processingStatus !== 'completed' && <span className="text-zinc-300">{progress}%</span>}
-                    <span className={`text-zinc-500 ${processingStatus !== 'completed' ? 'ml-2 border-l border-zinc-800 pl-2' : ''}`}>
-                      {processingStatus === 'completed' ? 'Ready' : statusMessage}
+                {processingStatus !== 'IDLE' && (
+                  <div className="flex items-center px-3 py-1 bg-[#0a0a0a] border border-zinc-800 rounded-full shadow-lg ml-auto space-x-2">
+                    <div className={`w-1.5 h-1.5 rounded-full ${processingStatus === 'COMPLETED' ? 'bg-green-500' : 'bg-orange-500 animate-pulse'}`} />
+                    {processingStatus !== 'COMPLETED' && <span className="text-zinc-300 text-xs font-mono">{progress}%</span>}
+                    <span className={`text-zinc-500 ${processingStatus !== 'COMPLETED' ? 'ml-2 border-l border-zinc-800 pl-2' : ''}`}>
+                      {processingStatus === 'COMPLETED' ? 'Ready' : statusMessage}
                     </span>
                   </div>
                 )}
@@ -116,7 +116,7 @@ export function MediaViewer() {
                 />
                 
                 {/* Progress Bar Overlay when processing */}
-                {processingStatus !== 'idle' && processingStatus !== 'completed' && (
+                {processingStatus !== 'IDLE' && processingStatus !== 'COMPLETED' && (
                   <div className="absolute inset-0 bg-black/80 backdrop-blur-md flex flex-col items-center justify-center">
                     <div className="w-64 h-1 bg-zinc-900 overflow-hidden mb-3">
                       <motion.div 

@@ -48,32 +48,61 @@ func getProjectIDUint(id interface{}) uint {
 }
 
 func StartEventListeners() {
-	go listenToChannel("events:progress", handleProgress)
-	go listenToChannel("events:clips_ready", handleClipsReady)
-	go listenToChannel("events:clip_completed", handleClipCompleted)
-	go listenToChannel("events:failed", handleFailed)
-	go listenToChannel("events:transcript_ready", handleTranscriptReady)
+	go listenToStream("stream:events:progress", handleProgress)
+	go listenToStream("stream:events:clips_ready", handleClipsReady)
+	go listenToStream("stream:events:clip_completed", handleClipCompleted)
+	go listenToStream("stream:events:failed", handleFailed)
+	go listenToStream("stream:events:transcript_ready", handleTranscriptReady)
 }
 
-func listenToChannel(channel string, handler func(payload EventPayload, rawMsg string)) {
+func listenToStream(stream string, handler func(payload EventPayload, rawMsg string)) {
 	ctx := context.Background()
-	pubsub := RedisClient.Subscribe(ctx, channel)
-	defer pubsub.Close()
+	group := "go_gateway_group"
+	consumer := "go_gateway_consumer_1"
 
-	log.Printf("Listening to Redis channel: %s", channel)
+	err := RedisClient.XGroupCreateMkStream(ctx, stream, group, "0").Err()
+	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
+		log.Printf("Notice on group creation %s: %v", stream, err)
+	}
 
-	for msg := range pubsub.Channel() {
-		var payload EventPayload
-		if err := json.Unmarshal([]byte(msg.Payload), &payload); err != nil {
-			log.Printf("Failed to unmarshal event on %s: %v", channel, err)
+	log.Printf("Listening to Redis stream: %s", stream)
+
+	for {
+		streams, err := RedisClient.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    group,
+			Consumer: consumer,
+			Streams:  []string{stream, ">"},
+			Count:    10,
+			Block:    0,
+		}).Result()
+
+		if err != nil {
+			log.Printf("Error reading from stream %s: %v", stream, err)
 			continue
 		}
-		
-		handler(payload, msg.Payload)
-		
-		if payload.ProjectID != nil && websocket_pkg.DefaultHub != nil {
-			projectIDStr := getProjectIDStr(payload.ProjectID)
-			websocket_pkg.DefaultHub.Broadcast(projectIDStr, msg.Payload)
+
+		for _, streamMsg := range streams {
+			for _, msg := range streamMsg.Messages {
+				payloadStr, ok := msg.Values["payload"].(string)
+				if !ok {
+					bytes, _ := json.Marshal(msg.Values)
+					payloadStr = string(bytes)
+				}
+				
+				var payload EventPayload
+				if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
+					log.Printf("Failed to unmarshal event on %s: %v (payload: %s)", stream, err, payloadStr)
+				} else {
+					handler(payload, payloadStr)
+					
+					if payload.ProjectID != nil && websocket_pkg.DefaultHub != nil {
+						projectIDStr := getProjectIDStr(payload.ProjectID)
+						websocket_pkg.DefaultHub.Broadcast(projectIDStr, payloadStr)
+					}
+				}
+
+				RedisClient.XAck(ctx, stream, group, msg.ID)
+			}
 		}
 	}
 }
@@ -93,7 +122,7 @@ func handleClipsReady(payload EventPayload, rawMsg string) {
 	log.Printf("[events:clips_ready] Project %v has %d clips planned.", payload.ProjectID, len(payload.Clips))
 	projectID := getProjectIDUint(payload.ProjectID)
 	
-	repository.DB.Model(&models.Project{}).Where("id = ?", projectID).Update("status", "rendering")
+	repository.DB.Model(&models.Project{}).Where("id = ?", projectID).Update("status", models.StatusRendering)
 
 	var project models.Project
 	repository.DB.First(&project, projectID)
@@ -133,13 +162,13 @@ func handleClipCompleted(payload EventPayload, rawMsg string) {
 	
 	if pendingCount == 0 {
 		log.Printf("All clips rendered for Project %v. Marking as completed.", projectID)
-		repository.DB.Model(&models.Project{}).Where("id = ?", projectID).Update("status", "completed")
+		repository.DB.Model(&models.Project{}).Where("id = ?", projectID).Update("status", models.StatusCompleted)
 		
 		// Broadcast final completion
 		if websocket_pkg.DefaultHub != nil {
 			finalMsg, _ := json.Marshal(map[string]interface{}{
-				"status": "completed",
-				"message": "All clips rendered successfully!",
+				"status":   string(models.StatusCompleted),
+				"message":  "All clips rendered successfully!",
 				"progress": 100,
 			})
 			websocket_pkg.DefaultHub.Broadcast(getProjectIDStr(payload.ProjectID), string(finalMsg))
@@ -149,5 +178,5 @@ func handleClipCompleted(payload EventPayload, rawMsg string) {
 
 func handleFailed(payload EventPayload, rawMsg string) {
 	log.Printf("[events:failed] Project %v failed: %s", payload.ProjectID, payload.Error)
-	repository.DB.Model(&models.Project{}).Where("id = ?", getProjectIDUint(payload.ProjectID)).Update("status", "failed")
+	repository.DB.Model(&models.Project{}).Where("id = ?", getProjectIDUint(payload.ProjectID)).Update("status", models.StatusFailed)
 }

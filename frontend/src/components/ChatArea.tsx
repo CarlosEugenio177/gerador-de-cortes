@@ -44,7 +44,7 @@ export function ChatArea() {
 
     // 3. Real Fetch to Go Gateway
     try {
-      updateProgress('processing', 'Uploading video and starting AI Engine...', 10);
+      updateProgress('UPLOADING', 'Uploading video and starting AI Engine...', 10);
       const res = await fetch("http://localhost:8000/api/v1/projects", {
         method: "POST",
         body: formData,
@@ -69,7 +69,7 @@ export function ChatArea() {
     } catch (error) {
       console.error(error);
       addMessage({ sender: "ai", text: "System Error: Could not connect to Gateway API." });
-      updateProgress('failed', 'System Error', 0);
+      updateProgress('FAILED', 'System Error', 0);
     } finally {
       setThinking(false);
     }

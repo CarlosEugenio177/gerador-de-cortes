@@ -46,13 +46,14 @@ function ForgeContent() {
             if (data.status === 'processing') {
               updateProgress(data.status, "Sincronizado com o servidor", 50);
             } else {
-              updateProgress('idle', '', 0);
+              updateProgress('IDLE', '', 0);
             }
             
-            if (data.original_file) {
-              const filename = data.original_file.split('/').pop() || data.original_file.split('\\').pop();
+            const videoPath = data.proxy_file || data.original_file;
+            if (videoPath) {
+              const filename = videoPath.split('/').pop() || videoPath.split('\\').pop();
               const fakeFile = new File([], filename);
-              setVideoFile(fakeFile, `http://localhost:8000/${data.original_file}`);
+              setVideoFile(fakeFile, `http://localhost:8000/${videoPath}`);
             }
 
             if (data.clips && data.clips.length > 0) {
@@ -65,7 +66,7 @@ function ForgeContent() {
   }, [queryProjectId, setProject, updateProgress, setClips, setVideoFile]);
 
   useEffect(() => {
-    if (processingStatus === 'completed' && projectId) {
+    if (processingStatus === 'COMPLETED' && projectId) {
       router.push(`/editor/${projectId}`);
     }
   }, [processingStatus, projectId, router]);

@@ -57,7 +57,7 @@ export function ForgeControls() {
   } = useAppStore();
 
   const t = i18n[forgeLanguage];
-  const isProcessing = isThinking || (processingStatus !== 'idle' && processingStatus !== 'failed' && processingStatus !== 'completed');
+  const isProcessing = isThinking || (processingStatus !== 'IDLE' && processingStatus !== 'COMPLETED' && processingStatus !== 'FAILED');
 
   const handleForge = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,7 +95,7 @@ export function ForgeControls() {
     formData.append("prompt", promptInstruction);
 
     try {
-      updateProgress('processing', 'IGNITING FORGE (Uploading video)...', 10);
+      updateProgress('UPLOADING', 'IGNITING FORGE (Uploading video)...', 10);
       const res = await fetch("http://localhost:8000/api/v1/projects", {
         method: "POST",
         body: formData,
@@ -108,7 +108,7 @@ export function ForgeControls() {
       
     } catch (error) {
       console.error(error);
-      updateProgress('failed', 'System Error: Core Meltdown', 0);
+      updateProgress('FAILED', 'System Error: Core Meltdown', 0);
     } finally {
       setThinking(false);
     }

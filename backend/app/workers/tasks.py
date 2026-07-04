@@ -23,11 +23,11 @@ def _publish_status(project_id: int, status: str, message: str, progress: int = 
             "message": message, 
             "progress": progress
         })
-        redis_client.publish("events:progress", payload)
+        redis_client.xadd("stream:events:progress", {"payload": payload})
     except Exception as e:
         logger.error(f"Failed to publish status to Redis: {e}")
 
-async def run_process_video(project_id: int, file_path: str, prompt: str) -> None:
+async def run_process_video(project_id: int, file_path: str, prompt: str, pre_extracted_audio: str = None) -> None:
     """Async task executor implementing the DB-less AI pipeline."""
     logger.info(f"Starting processing pipeline for project {project_id}")
     
@@ -48,8 +48,15 @@ async def run_process_video(project_id: int, file_path: str, prompt: str) -> Non
             with open(transcript_file, "r", encoding="utf-8") as f:
                 segments = json.load(f)
         else:
-            logger.info(f"Extracting audio from: {file_path}")
-            audio_path = transcription_service.extract_audio(file_path)
+            if pre_extracted_audio and os.path.exists(pre_extracted_audio):
+                logger.info(f"Using pre-extracted audio: {pre_extracted_audio}")
+                audio_path = pre_extracted_audio
+                # Do NOT delete this file in finally block since Go might need it or manage it
+                should_cleanup_audio = False
+            else:
+                logger.info(f"Extracting audio from: {file_path}")
+                audio_path = transcription_service.extract_audio(file_path)
+                should_cleanup_audio = True
 
             logger.info("Generating transcription with Faster-Whisper...")
             _publish_status(project_id, "transcribing", "Transcribing audio (this may take a while)...", 20)
@@ -98,59 +105,74 @@ async def run_process_video(project_id: int, file_path: str, prompt: str) -> Non
                 pass
 
         
+        import hashlib
+        cache_key = f"{command_config.topic_focus}_{command_config.min_duration}_{command_config.max_duration}_{command_config.clip_count}_{'FULL' if 'FULL_VIDEO_EDIT' in prompt else ''}_{'MANUAL' if 'MANUAL CUT' in prompt else ''}_{prompt.count('from ')}"
+        cache_hash = hashlib.md5(cache_key.encode()).hexdigest()
+        moments_file = f"{file_path}.moments_{cache_hash}.json"
+
         viral_moments = []
-        if "MANUAL CUT" in prompt and command_config.manual_timestamps and len(command_config.manual_timestamps) > 0:
-            logger.info("Manual timestamps provided! Bypassing Semantic Scoring.")
-            _publish_status(project_id, "analyzing", "Tempos manuais detectados. Pulando busca de IA...", 50)
-            for t_range in command_config.manual_timestamps:
-                if isinstance(t_range, list) and len(t_range) >= 2:
-                    start_val, end_val = float(t_range[0]), float(t_range[1])
-                    if start_val < end_val:
-                        viral_moments.append({"start_time": start_val, "end_time": end_val, "viral_score": 100.0, "title": "Corte Manual", "description": "Corte manual pelo usuário"})
-        
-        if "FULL_VIDEO_EDIT" in prompt:
-            logger.info("Full Video Edit requested. Bypassing Semantic Scoring.")
-            _publish_status(project_id, "analyzing", "Modo Edição Normal detectado. Aplicando estilo ao vídeo completo...", 50)
-            viral_moments.append({
-                "start_time": 0.0, 
-                "end_time": duration, 
-                "viral_score": 100.0, 
-                "title": "Vídeo Completo", 
-                "description": "Edição do vídeo original na íntegra (legendas e silêncios)"
-            })
+        if os.path.exists(moments_file):
+            logger.info("Found cached viral moments! Skipping scoring pipeline.")
+            _publish_status(project_id, "analyzing", "Carregando momentos previamente analisados pela IA (Rápido)...", 70)
+            with open(moments_file, "r", encoding="utf-8") as f:
+                viral_moments = json.load(f)
+        else:
+            if "MANUAL CUT" in prompt and command_config.manual_timestamps and len(command_config.manual_timestamps) > 0:
+                logger.info("Manual timestamps provided! Bypassing Semantic Scoring.")
+                _publish_status(project_id, "analyzing", "Tempos manuais detectados. Pulando busca de IA...", 50)
+                for t_range in command_config.manual_timestamps:
+                    if isinstance(t_range, list) and len(t_range) >= 2:
+                        start_val, end_val = float(t_range[0]), float(t_range[1])
+                        if start_val < end_val:
+                            viral_moments.append({"start_time": start_val, "end_time": end_val, "viral_score": 100.0, "title": "Corte Manual", "description": "Corte manual pelo usuário"})
             
-        if not viral_moments:
-            logger.info("Segmenting transcript into blocks...")
-            _publish_status(project_id, "analyzing", f"Analisando texto e quadros do vídeo visualmente...", 50)
-            blocks = scoring_service.segment_transcript(segments, block_size=15.0)
-            
-            logger.info("Scoring blocks with text and visual analysis...")
-            scored_blocks = scoring_service.score_blocks(blocks, topic_focus=command_config.topic_focus, video_path=file_path)
-            
-            logger.info("Merging and selecting best clips...")
-            
-            # Extract previously generated clips from prompt to avoid duplicates
-            import re
-            previous_clips = []
-            for match in re.finditer(r"from ([\d.]+)s to ([\d.]+)s", prompt):
-                try:
-                    prev_start = float(match.group(1))
-                    prev_end = float(match.group(2))
-                    previous_clips.append((prev_start, prev_end))
-                except ValueError:
-                    pass
-            
-            viral_moments = scoring_service.merge_blocks(
-                scored_blocks, 
-                min_duration=command_config.min_duration, 
-                max_duration=command_config.max_duration, 
-                top_k=command_config.clip_count,
-                previous_clips=previous_clips
-            )
-            
+            if "FULL_VIDEO_EDIT" in prompt:
+                logger.info("Full Video Edit requested. Bypassing Semantic Scoring.")
+                _publish_status(project_id, "analyzing", "Modo Edição Normal detectado. Aplicando estilo ao vídeo completo...", 50)
+                viral_moments.append({
+                    "start_time": 0.0, 
+                    "end_time": duration, 
+                    "viral_score": 100.0, 
+                    "title": "Vídeo Completo", 
+                    "description": "Edição do vídeo original na íntegra (legendas e silêncios)"
+                })
+                
             if not viral_moments:
-                logger.warning(f"Pipeline returned no viral moments. Creating a default clip.")
-                viral_moments = [{"start_time": 0.0, "end_time": min(command_config.min_duration, duration), "viral_score": 50.0}]
+                logger.info("Segmenting transcript into blocks...")
+                _publish_status(project_id, "analyzing", f"Analisando texto e quadros do vídeo visualmente...", 50)
+                blocks = scoring_service.segment_transcript(segments, block_size=15.0)
+                
+                logger.info("Scoring blocks with text and visual analysis...")
+                scored_blocks = scoring_service.score_blocks(blocks, topic_focus=command_config.topic_focus, video_path=file_path)
+                
+                logger.info("Merging and selecting best clips...")
+                
+                # Extract previously generated clips from prompt to avoid duplicates
+                import re
+                previous_clips = []
+                for match in re.finditer(r"from ([\d.]+)s to ([\d.]+)s", prompt):
+                    try:
+                        prev_start = float(match.group(1))
+                        prev_end = float(match.group(2))
+                        previous_clips.append((prev_start, prev_end))
+                    except ValueError:
+                        pass
+                
+                viral_moments = scoring_service.merge_blocks(
+                    scored_blocks, 
+                    min_duration=command_config.min_duration, 
+                    max_duration=command_config.max_duration, 
+                    top_k=command_config.clip_count,
+                    previous_clips=previous_clips
+                )
+                
+                if not viral_moments:
+                    logger.warning(f"Pipeline returned no viral moments. Creating a default clip.")
+                    viral_moments = [{"start_time": 0.0, "end_time": min(command_config.min_duration, duration), "viral_score": 50.0}]
+
+            # Save to cache
+            with open(moments_file, "w", encoding="utf-8") as f:
+                json.dump(viral_moments, f, ensure_ascii=False)
 
         logger.info(f"Queuing {len(viral_moments)} video cuts for Render Engine...")
         _publish_status(project_id, "analyzing", f"Criando plano de edição para {len(viral_moments)} cortes...", 80)
@@ -262,11 +284,11 @@ async def run_process_video(project_id: int, file_path: str, prompt: str) -> Non
             "project_id": project_id,
             "clips": clips_metadata
         })
-        r.publish("events:clips_ready", clips_payload)
+        r.xadd("stream:events:clips_ready", {"payload": clips_payload})
 
         # Envia os jobs para o render engine
         for plan in render_jobs:
-            r.rpush("queue:render", json.dumps(plan))
+            r.xadd("stream:render", {"payload": json.dumps(plan)})
 
         logger.info(f"Project {project_id} successfully processed and queued for rendering!")
         _publish_status(project_id, "rendering", "Plano de edição enviado para renderização na GPU...", 85)
@@ -275,10 +297,10 @@ async def run_process_video(project_id: int, file_path: str, prompt: str) -> Non
         logger.exception(f"Error processing project {project_id}: {str(e)}")
         # Publish to events:failed
         payload = json.dumps({"project_id": project_id, "status": "failed", "error": str(e)})
-        Redis.from_url(redis_url).publish("events:failed", payload)
+        Redis.from_url(redis_url).xadd("stream:events:failed", {"payload": payload})
     finally:
         # Cleanup temporary audio file
-        if audio_path and os.path.exists(audio_path):
+        if should_cleanup_audio and audio_path and os.path.exists(audio_path):
             try:
                 os.remove(audio_path)
             except Exception as cleanup_error:
@@ -321,7 +343,7 @@ async def run_transcribe_video(project_id: int, file_path: str) -> None:
             "project_id": project_id,
             "transcript": segments
         })
-        r.publish("events:transcript_ready", payload)
+        r.xadd("stream:events:transcript_ready", {"payload": payload})
         
         _publish_status(project_id, "idle", "Transcrição concluída!", 100)
 
@@ -399,7 +421,7 @@ async def run_render_custom(project_id: int, file_path: str, style_config: dict)
             "operations": ops
         }
 
-        r.rpush("queue:render", json.dumps(edit_plan))
+        r.xadd("stream:render", {"payload": json.dumps(edit_plan)})
         
         _publish_status(project_id, "rendering", "Enviado para renderização...", 85)
 

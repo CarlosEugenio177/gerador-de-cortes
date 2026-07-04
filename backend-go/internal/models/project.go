@@ -5,6 +5,19 @@ import (
 	"gorm.io/gorm"
 )
 
+type ProjectStatus string
+
+const (
+	StatusUploading    ProjectStatus = "UPLOADING"
+	StatusPreprocessing ProjectStatus = "PREPROCESSING"
+	StatusTranscribing ProjectStatus = "TRANSCRIBING"
+	StatusAnalyzing    ProjectStatus = "ANALYZING"
+	StatusRendering    ProjectStatus = "RENDERING"
+	StatusExporting    ProjectStatus = "EXPORTING"
+	StatusCompleted    ProjectStatus = "COMPLETED"
+	StatusFailed       ProjectStatus = "FAILED"
+)
+
 type Clip struct {
 	ID          uint           `gorm:"primaryKey" json:"id"`
 	ProjectID   *uint          `gorm:"index" json:"project_id"`
@@ -30,9 +43,11 @@ func (Clip) TableName() string {
 type Project struct {
 	ID           uint           `gorm:"primaryKey" json:"id"`
 	Title        string         `gorm:"size:255" json:"title"`
-	Status       string         `gorm:"size:50;default:'processing'" json:"status"`
+	Status       ProjectStatus  `gorm:"size:50;default:'UPLOADING'" json:"status"`
 	Prompt       string         `gorm:"type:text" json:"prompt,omitempty"`
 	OriginalFile string         `gorm:"size:255" json:"original_file,omitempty"`
+	ProxyFile    string         `gorm:"size:255" json:"proxy_file,omitempty"`
+	AudioFile    string         `gorm:"size:255" json:"audio_file,omitempty"`
 	Duration     float64        `json:"duration,omitempty"`
 	Clips        []Clip         `json:"clips,omitempty"`
 	CreatedAt    time.Time      `json:"created_at"`

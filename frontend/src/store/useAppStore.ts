@@ -59,7 +59,7 @@ interface AppState {
   messages: ChatMessage[];
   isThinking: boolean;
   
-  processingStatus: 'idle' | 'processing' | 'rendering' | 'transcribing' | 'completed' | 'failed';
+  processingStatus: 'IDLE' | 'UPLOADING' | 'PREPROCESSING' | 'TRANSCRIBING' | 'ANALYZING' | 'RENDERING' | 'EXPORTING' | 'COMPLETED' | 'FAILED';
   statusMessage: string;
   progress: number;
   showOssPopup: boolean;
@@ -122,7 +122,7 @@ export const useAppStore = create<AppState>()(
       ],
       isThinking: false,
       
-      processingStatus: 'idle',
+      processingStatus: 'IDLE',
       statusMessage: '',
       progress: 0,
       showOssPopup: false,
@@ -147,7 +147,7 @@ export const useAppStore = create<AppState>()(
         videoFile: null,
         selectedClip: null,
         projectName: '',
-        processingStatus: 'idle',
+        processingStatus: 'IDLE',
         statusMessage: '',
         progress: 0,
         showOssPopup: false,
@@ -174,7 +174,7 @@ export const useAppStore = create<AppState>()(
         processingStatus: status, 
         statusMessage: message, 
         progress,
-        showOssPopup: status === 'completed' && state.processingStatus !== 'completed' ? true : state.showOssPopup
+        showOssPopup: status === 'COMPLETED' && state.processingStatus !== 'COMPLETED' ? true : state.showOssPopup
       })),
       
       setShowOssPopup: (show) => set({ showOssPopup: show }),
@@ -217,7 +217,7 @@ export const useAppStore = create<AppState>()(
       })),
 
       extractTranscript: async (projectId: string) => {
-        set({ processingStatus: 'transcribing', statusMessage: 'Extracting transcript...', progress: 0 });
+        set({ processingStatus: 'TRANSCRIBING', statusMessage: 'Extracting transcript...', progress: 0 });
         try {
           const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
           const res = await fetch(`${API_URL}/api/v1/projects/${projectId}/transcribe`, {
@@ -226,13 +226,13 @@ export const useAppStore = create<AppState>()(
           if (!res.ok) throw new Error("Failed to start transcription");
         } catch (error) {
           console.error(error);
-          set({ processingStatus: 'failed', statusMessage: 'Failed to extract transcript' });
+          set({ processingStatus: 'FAILED', statusMessage: 'Failed to extract transcript' });
         }
       },
 
       renderCustomProject: async (projectId: string) => {
         const state = get();
-        set({ processingStatus: 'processing', statusMessage: 'Preparing custom render...', progress: 0 });
+        set({ processingStatus: 'PREPROCESSING', statusMessage: 'Preparing custom render...', progress: 0 });
         try {
           const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
           
@@ -254,12 +254,12 @@ export const useAppStore = create<AppState>()(
           if (!res.ok) throw new Error("Failed to start custom render");
         } catch (error) {
           console.error(error);
-          set({ processingStatus: 'failed', statusMessage: 'Failed to start custom render' });
+          set({ processingStatus: 'FAILED', statusMessage: 'Failed to start custom render' });
         }
       },
 
       reprocessProject: async (projectId: string, overridePrompt?: string) => {
-        set({ processingStatus: 'processing', statusMessage: 'Starting AI reprocessing...', progress: 0 });
+        set({ processingStatus: 'ANALYZING', statusMessage: 'Starting AI reprocessing...', progress: 0 });
         try {
           const state = get();
           
@@ -285,7 +285,7 @@ export const useAppStore = create<AppState>()(
           }
         } catch (error) {
           console.error(error);
-          set({ processingStatus: 'failed', statusMessage: 'Failed to start reprocessing' });
+          set({ processingStatus: 'FAILED', statusMessage: 'Failed to start reprocessing' });
         }
       },
       cancelProcessing: async () => {
@@ -298,7 +298,7 @@ export const useAppStore = create<AppState>()(
             console.error("Cancel failed", e);
           }
         }
-        set({ processingStatus: 'idle', statusMessage: 'Cancelled', progress: 0 });
+        set({ processingStatus: 'IDLE', statusMessage: 'Cancelled', progress: 0 });
       },
     }),
     {

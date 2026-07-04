@@ -91,10 +91,10 @@ export function EditorLayout() {
                 window.location.href = '/forge?project=' + projectId;
               }
             }}
-            disabled={processingStatus === 'processing'}
+            disabled={processingStatus === 'ANALYZING'}
             className="flex items-center space-x-2 bg-zinc-800 text-zinc-300 px-4 py-1.5 rounded text-xs font-semibold hover:bg-zinc-700 hover:text-white transition-colors border border-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <RefreshCw className={`w-4 h-4 ${processingStatus === 'processing' ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${processingStatus === 'ANALYZING' ? 'animate-spin' : ''}`} />
             <span>Gerar Novos Cortes</span>
           </button>
 

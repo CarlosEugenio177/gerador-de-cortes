@@ -43,8 +43,9 @@ export default function EditorPage() {
       })
       .then(project => {
         console.log("Fetched project:", project);
-        if (project.original_file) {
-           useAppStore.setState({ videoUrl: `${API_URL}/${project.original_file}` });
+        const videoPath = project.proxy_file || project.original_file;
+        if (videoPath) {
+           useAppStore.setState({ videoUrl: `${API_URL}/${videoPath}` });
         }
         
         const projectClips = project.clips || project.Clips;
