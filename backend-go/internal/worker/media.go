@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,16 +9,38 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"clipforge-gateway/internal/models"
 	"clipforge-gateway/internal/repository"
 	websocket_pkg "clipforge-gateway/pkg/websocket"
 )
 
+var cancelFuncs = make(map[uint]context.CancelFunc)
+var cancelMutex sync.Mutex
+
+func RegisterCancel(id uint, cancel context.CancelFunc) {
+	cancelMutex.Lock()
+	cancelFuncs[id] = cancel
+	cancelMutex.Unlock()
+}
+
+func TriggerCancel(id uint) {
+	cancelMutex.Lock()
+	if cancel, ok := cancelFuncs[id]; ok {
+		cancel()
+		delete(cancelFuncs, id)
+	}
+	cancelMutex.Unlock()
+}
+
 // PreprocessVideoAsync creates a proxy video and extracts audio, then updates DB and sends to Redis Queue
 func PreprocessVideoAsync(projectID uint, originalPath string, prompt string) {
 	log.Printf("Starting preprocessing for project %d: %s", projectID, originalPath)
 	
+	ctx, cancel := context.WithCancel(context.Background())
+	RegisterCancel(projectID, cancel)
+	defer TriggerCancel(projectID)
 	// Notify frontend we are preprocessing
 	if websocket_pkg.DefaultHub != nil {
 		progressMsg, _ := json.Marshal(map[string]interface{}{
@@ -53,8 +76,12 @@ func PreprocessVideoAsync(projectID uint, originalPath string, prompt string) {
 		// 1. Extract Audio
 		log.Printf("Extracting audio for project %d...", projectID)
 		// ffmpeg -i original.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav
-		audioCmd := exec.Command("ffmpeg", "-y", "-i", originalPath, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audioPath)
+		audioCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", originalPath, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audioPath)
 		if err := audioCmd.Run(); err != nil {
+			if ctx.Err() != nil {
+				log.Printf("Audio extraction cancelled for project %d", projectID)
+				return
+			}
 			log.Printf("Error extracting audio for project %d: %v", projectID, err)
 			failProject(projectID, "Failed to extract audio")
 			return
@@ -73,8 +100,12 @@ func PreprocessVideoAsync(projectID uint, originalPath string, prompt string) {
 		// 2. Create Proxy (360p, fast hardware encode)
 		log.Printf("Creating proxy video for project %d on GPU (NVENC)...", projectID)
 		// ffmpeg -i original.mp4 -vf scale=-2:360 -c:v h264_nvenc -preset p4 -cq 28 -c:a aac -b:a 128k proxy.mp4
-		proxyCmd := exec.Command("ffmpeg", "-y", "-i", originalPath, "-vf", "scale=-2:360", "-c:v", "h264_nvenc", "-preset", "p4", "-cq", "28", "-c:a", "aac", "-b:a", "128k", proxyPath)
+		proxyCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", originalPath, "-vf", "scale=-2:360", "-c:v", "h264_nvenc", "-preset", "p4", "-cq", "28", "-c:a", "aac", "-b:a", "128k", proxyPath)
 		if err := proxyCmd.Run(); err != nil {
+			if ctx.Err() != nil {
+				log.Printf("Proxy creation cancelled for project %d", projectID)
+				return
+			}
 			log.Printf("Error creating proxy for project %d: %v", projectID, err)
 			failProject(projectID, "Failed to create proxy video")
 			return

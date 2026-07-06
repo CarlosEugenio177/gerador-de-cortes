@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 	"clipforge-gateway/internal/models"
 	"clipforge-gateway/internal/repository"
 	"clipforge-gateway/internal/worker"
@@ -173,6 +174,12 @@ func CancelProject(c *fiber.Ctx) error {
 	if err := repository.DB.Save(&project).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update project status"})
 	}
+
+	// Trigger cancellation of FFmpeg processes if they are running
+	worker.TriggerCancel(project.ID)
+
+	// Set a cancel flag in Redis for the Python worker to check
+	worker.RedisClient.Set(context.Background(), fmt.Sprintf("cancel:%d", project.ID), "1", 24*time.Hour)
 
 	return c.JSON(fiber.Map{"message": "Project cancelled"})
 }

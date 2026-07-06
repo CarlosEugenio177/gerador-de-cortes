@@ -10,6 +10,15 @@ from app.services.transcription import TranscriptionService
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def is_cancelled(project_id: int) -> bool:
+    """Check if project was cancelled via Redis flag."""
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+        r = Redis.from_url(redis_url)
+        return r.exists(f"cancel:{project_id}") > 0
+    except Exception:
+        return False
+
 
 
 def _publish_status(project_id: int, status: str, message: str, progress: int = 0):
@@ -42,6 +51,10 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
     try:
         transcription_service = TranscriptionService(model_size="base", device="cuda")
 
+        if is_cancelled(project_id):
+            logger.info(f"Project {project_id} cancelled before transcription.")
+            return
+
         if os.path.exists(transcript_file):
             logger.info("Found existing transcription. Skipping Faster-Whisper!")
             _publish_status(project_id, "transcribing", "Carregando transcrição existente (Rápido)...", 20)
@@ -71,6 +84,10 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
                 
         # Force garbage collection of VRAM before starting LLM
         transcription_service.unload_model()
+
+        if is_cancelled(project_id):
+            logger.info(f"Project {project_id} cancelled after transcription.")
+            return
 
         duration = segments[-1]["end"]
         
@@ -141,6 +158,9 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
                 })
                 
             if not viral_moments:
+                if is_cancelled(project_id):
+                    logger.info(f"Project {project_id} cancelled before segmentation.")
+                    return
                 logger.info("Segmenting transcript into blocks...")
                 _publish_status(project_id, "analyzing", f"Analisando texto e quadros do vídeo visualmente...", 50)
                 blocks = scoring_service.segment_transcript(segments, block_size=15.0)
