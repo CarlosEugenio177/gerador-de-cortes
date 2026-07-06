@@ -350,6 +350,7 @@ async def run_transcribe_video(project_id: int, file_path: str) -> None:
     _publish_status(project_id, "transcribing", "Extraindo áudio e legendas...", 10)
     transcript_file = f"{file_path}.transcript.json"
     audio_path = None
+    should_cleanup_audio = False
 
     try:
         if os.path.exists(transcript_file):
