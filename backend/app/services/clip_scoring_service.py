@@ -190,11 +190,21 @@ class ClipScoringService:
                 
         # Fallback if no clip reached min_duration
         if not clips and scored_blocks:
-            best = scored_blocks[0]
+            fallback_block = None
+            # Try to find the best block that doesn't overlap with previous clips
+            for b in scored_blocks:
+                if not is_overlapping(b["start_time"], b["end_time"]):
+                    fallback_block = b
+                    break
+                    
+            # If all blocks overlap, just take the best one
+            if not fallback_block:
+                fallback_block = scored_blocks[0]
+                
             clips.append({
-                "start_time": best["start_time"],
-                "end_time": best["start_time"] + min_duration,
-                "viral_score": best["final_score"]
+                "start_time": fallback_block["start_time"],
+                "end_time": fallback_block["start_time"] + min_duration,
+                "viral_score": fallback_block["final_score"]
             })
             
         return clips
