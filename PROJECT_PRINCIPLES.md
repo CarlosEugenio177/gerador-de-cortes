@@ -297,32 +297,19 @@ Sua responsabilidade futura:
 
 ---
 
-# ARQUITETURA FUTURA
+# ARQUITETURA ATUAL (Implementada)
 
-Next.js
+Next.js (Frontend React)
 ↓
-
-Go Gateway
+Go Gateway (API, WebSockets, Uploads)
 ↓
-
-Postgres
+Postgres (Dados) & Redis (Cache e Streams/Lists)
 ↓
-
-Redis
-
+Python AI Engine (Whisper, Ollama, OpenCV) -> Extração Semântica e Visão
 ↓
-
-Python AI Engine
-
-- Whisper
-- LLM
-- FFmpeg
-- OpenCV
-- Timeline Renderer
-
+Go Render Engine (FFmpeg, NVENC CUDA) -> Renderização Final
 ↓
-
-Storage
+Storage (Uploads)
 
 ---
 

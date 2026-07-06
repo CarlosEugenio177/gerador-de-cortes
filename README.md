@@ -20,8 +20,13 @@ O projeto utiliza uma arquitetura baseada em microsserviços para garantir escal
 1. **Upload e Instrução:** O usuário faz o upload de um vídeo longo e fornece uma instrução simples (ex: *"Encontre os 3 momentos mais virais e adicione legendas estilo TikTok"*).
 2. **AI Director:** O *AI Engine* transcreve o áudio e analisa o contexto através de Modelos de Linguagem (LLMs).
 3. **Plano de Execução:** A IA entende a intenção e elabora um plano, que é convertido em uma série de operações matemáticas e lógicas (`EditOperations`).
-4. **Renderização:** O *Render Engine* processa sequencialmente as operações de edição, gerando a mídia final sem intervenção manual.
+4. **Renderização:** O *Render Engine* processa sequencialmente as operações de edição, gerando a mídia final sem intervenção manual usando aceleração NVENC (CUDA).
 5. **Local e Privado:** O projeto é construído para rodar de forma contida na máquina/servidor, sem enviar seus arquivos de mídia para APIs externas.
+
+## ⚡ Features Principais de Arquitetura (Recentes)
+- **Global Cache (Deduplicação Inteligente):** O Gateway calcula o Hash MD5 dos vídeos, permitindo que transcrições (Whisper) e recortes proxy sejam cacheados e reaproveitados instantaneamente em múltiplos projetos, pulando horas de processamento.
+- **Graceful Cancellation:** Se você excluir um projeto que está sendo analisado, registros no Redis abatem as threads do FFmpeg e Whisper instantaneamente, zerando o consumo de GPU/CPU no mesmo segundo.
+- **Comunicação Assíncrona Reactiva:** O sistema usa *Redis Streams* para trafegar logs granulares de cada micro-etapa (desde o recorte visual até a transcrição) refletindo tudo no Frontend via WebSockets.
 
 ## 🛠️ Como Rodar o Projeto (Desenvolvimento Local)
 
