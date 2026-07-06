@@ -223,7 +223,10 @@ func publishProgress(rdb *redis.Client, projectID uint, status, message string, 
 		"message":    message,
 		"progress":   progress,
 	})
-	rdb.Publish(ctx, "events:progress", payload)
+	rdb.XAdd(ctx, &redis.XAddArgs{
+		Stream: "stream:events:progress",
+		Values: map[string]interface{}{"payload": string(payload)},
+	})
 }
 
 func publishClipCompleted(rdb *redis.Client, projectID uint, files []string, title string) {
@@ -235,7 +238,10 @@ func publishClipCompleted(rdb *redis.Client, projectID uint, files []string, tit
 			{"title": title},
 		},
 	})
-	rdb.Publish(ctx, "events:clip_completed", payload)
+	rdb.XAdd(ctx, &redis.XAddArgs{
+		Stream: "stream:events:clip_completed",
+		Values: map[string]interface{}{"payload": string(payload)},
+	})
 }
 
 func publishFailed(rdb *redis.Client, projectID uint, errorMsg string) {
@@ -244,5 +250,8 @@ func publishFailed(rdb *redis.Client, projectID uint, errorMsg string) {
 		"status":     "failed",
 		"error":      errorMsg,
 	})
-	rdb.Publish(ctx, "events:failed", payload)
+	rdb.XAdd(ctx, &redis.XAddArgs{
+		Stream: "stream:events:failed",
+		Values: map[string]interface{}{"payload": string(payload)},
+	})
 }

@@ -324,7 +324,7 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
 
         # Envia os jobs para o render engine
         for plan in render_jobs:
-            r.xadd("stream:render", {"payload": json.dumps(plan)})
+            r.rpush("queue:render", json.dumps(plan))
 
         logger.info(f"Project {project_id} successfully processed and queued for rendering!")
         _publish_status(project_id, "rendering", "Plano de edição enviado para renderização na GPU...", 85)
