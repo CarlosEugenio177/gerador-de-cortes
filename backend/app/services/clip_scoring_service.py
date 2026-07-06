@@ -73,10 +73,17 @@ class ClipScoringService:
         """
         scored_blocks = []
         total_blocks = len(blocks)
+        
+        # 1. Single Pass Visual Analysis (Fast Forward)
+        visual_scores = {i: 50.0 for i in range(total_blocks)}
+        if video_path:
+            try:
+                visual_scores = self.visual_service.analyze_all_blocks_visuals(video_path, blocks, progress_callback)
+            except Exception as e:
+                logger.error(f"Visual scoring failed in single pass: {e}")
+                
+        # 2. Semantic Analysis
         for i, block in enumerate(blocks):
-            if progress_callback:
-                progress_callback(i, total_blocks)
-            
             text = block["text"]
             hook = self.calculate_hook_score(text)
             emotion = self.calculate_emotion_score(text)
@@ -96,12 +103,7 @@ class ClipScoringService:
                 # LLM failed previously, fallback to boosting NLP to compensate
                 llm_score = nlp_score / 3.0
             
-            visual_score = 50.0
-            if video_path:
-                try:
-                    visual_score = self.visual_service.analyze_block_visuals(video_path, block["start_time"], block["end_time"])
-                except Exception as e:
-                    logger.error(f"Visual scoring failed for block {block['start_time']}: {e}")
+            visual_score = visual_scores.get(i, 50.0)
             
             # Recalculate based on non-zero metrics if LLM is disabled to maintain fair weights
             if self.llm_disabled:
