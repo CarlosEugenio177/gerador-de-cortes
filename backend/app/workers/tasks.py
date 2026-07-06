@@ -167,7 +167,19 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
                 
                 logger.info("Scoring blocks with text and visual analysis...")
                 video_for_analysis = proxy_path if proxy_path and os.path.exists(proxy_path) else file_path
-                scored_blocks = scoring_service.score_blocks(blocks, topic_focus=command_config.topic_focus, video_path=video_for_analysis)
+                
+                def progress_cb(current, total):
+                    # Progress from 50% to 80%
+                    if total > 0:
+                        percent = 50 + int((current / total) * 30)
+                        _publish_status(project_id, "analyzing", f"Analisando visualmente bloco {current+1} de {total}...", percent)
+
+                scored_blocks = scoring_service.score_blocks(
+                    blocks, 
+                    topic_focus=command_config.topic_focus, 
+                    video_path=video_for_analysis,
+                    progress_callback=progress_cb
+                )
                 
                 logger.info("Merging and selecting best clips...")
                 

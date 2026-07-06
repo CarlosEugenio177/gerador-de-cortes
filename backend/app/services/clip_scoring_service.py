@@ -67,12 +67,16 @@ class ClipScoringService:
             score += 40
         return min(score, 100.0)
 
-    def score_blocks(self, blocks: List[Dict], topic_focus: str = "viral moments", video_path: str = None) -> List[Dict]:
+    def score_blocks(self, blocks: List[Dict], topic_focus: str = "viral moments", video_path: str = None, progress_callback=None) -> List[Dict]:
         """
         Scores each 15-second block individually, considering the topic_focus and visual framing.
         """
         scored_blocks = []
-        for block in blocks:
+        total_blocks = len(blocks)
+        for i, block in enumerate(blocks):
+            if progress_callback:
+                progress_callback(i, total_blocks)
+            
             text = block["text"]
             hook = self.calculate_hook_score(text)
             emotion = self.calculate_emotion_score(text)
