@@ -329,8 +329,17 @@ async def run_transcribe_video(project_id: int, file_path: str) -> None:
             from app.services.transcription import TranscriptionService
             transcription_service = TranscriptionService(model_size="base", device="cuda")
             
-            logger.info(f"Extracting audio from: {file_path}")
-            audio_path = transcription_service.extract_audio(file_path)
+            # Check for globally cached audio from Go
+            global_audio = file_path.replace(os.path.splitext(file_path)[1], "_audio.wav")
+            should_cleanup_audio = True
+
+            if os.path.exists(global_audio):
+                logger.info(f"Using globally cached audio: {global_audio}")
+                audio_path = global_audio
+                should_cleanup_audio = False
+            else:
+                logger.info(f"Extracting audio from: {file_path}")
+                audio_path = transcription_service.extract_audio(file_path)
 
             logger.info("Generating transcription with Faster-Whisper...")
             _publish_status(project_id, "transcribing", "Transcrevendo áudio com Whisper...", 30)
@@ -355,7 +364,7 @@ async def run_transcribe_video(project_id: int, file_path: str) -> None:
         logger.exception(f"Error in transcribe for project {project_id}: {str(e)}")
         _publish_status(project_id, "failed", f"Erro na transcrição: {str(e)}")
     finally:
-        if audio_path and os.path.exists(audio_path):
+        if should_cleanup_audio and audio_path and os.path.exists(audio_path):
             try:
                 os.remove(audio_path)
             except Exception as cleanup_error:

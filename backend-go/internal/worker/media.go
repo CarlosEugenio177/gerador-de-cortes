@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -33,34 +34,51 @@ func PreprocessVideoAsync(projectID uint, originalPath string, prompt string) {
 	proxyPath := base + "_proxy.mp4"
 	audioPath := base + "_audio.wav"
 
-	// 1. Extract Audio
-	log.Printf("Extracting audio for project %d...", projectID)
-	// ffmpeg -i original.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav
-	audioCmd := exec.Command("ffmpeg", "-y", "-i", originalPath, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audioPath)
-	if err := audioCmd.Run(); err != nil {
-		log.Printf("Error extracting audio for project %d: %v", projectID, err)
-		failProject(projectID, "Failed to extract audio")
-		return
-	}
+	// Check if proxy and audio already exist (Deduplication cache)
+	_, errProxy := os.Stat(proxyPath)
+	_, errAudio := os.Stat(audioPath)
+	filesExist := errProxy == nil && errAudio == nil
 
-	// Notify frontend
-	if websocket_pkg.DefaultHub != nil {
-		progressMsg, _ := json.Marshal(map[string]interface{}{
-			"status":   string(models.StatusPreprocessing),
-			"message":  "Generating fast preview proxy...",
-			"progress": 15,
-		})
-		websocket_pkg.DefaultHub.Broadcast(fmt.Sprintf("%d", projectID), string(progressMsg))
-	}
+	if filesExist {
+		log.Printf("Proxy and audio already exist for project %d, skipping FFmpeg extraction (Global Cache Hit)", projectID)
+		if websocket_pkg.DefaultHub != nil {
+			progressMsg, _ := json.Marshal(map[string]interface{}{
+				"status":   string(models.StatusPreprocessing),
+				"message":  "Using globally cached video proxy...",
+				"progress": 15,
+			})
+			websocket_pkg.DefaultHub.Broadcast(fmt.Sprintf("%d", projectID), string(progressMsg))
+		}
+	} else {
+		// 1. Extract Audio
+		log.Printf("Extracting audio for project %d...", projectID)
+		// ffmpeg -i original.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav
+		audioCmd := exec.Command("ffmpeg", "-y", "-i", originalPath, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", audioPath)
+		if err := audioCmd.Run(); err != nil {
+			log.Printf("Error extracting audio for project %d: %v", projectID, err)
+			failProject(projectID, "Failed to extract audio")
+			return
+		}
 
-	// 2. Create Proxy (360p, fast hardware encode)
-	log.Printf("Creating proxy video for project %d on GPU (NVENC)...", projectID)
-	// ffmpeg -i original.mp4 -vf scale=-2:360 -c:v h264_nvenc -preset p4 -cq 28 -c:a aac -b:a 128k proxy.mp4
-	proxyCmd := exec.Command("ffmpeg", "-y", "-i", originalPath, "-vf", "scale=-2:360", "-c:v", "h264_nvenc", "-preset", "p4", "-cq", "28", "-c:a", "aac", "-b:a", "128k", proxyPath)
-	if err := proxyCmd.Run(); err != nil {
-		log.Printf("Error creating proxy for project %d: %v", projectID, err)
-		failProject(projectID, "Failed to create proxy video")
-		return
+		// Notify frontend
+		if websocket_pkg.DefaultHub != nil {
+			progressMsg, _ := json.Marshal(map[string]interface{}{
+				"status":   string(models.StatusPreprocessing),
+				"message":  "Generating fast preview proxy...",
+				"progress": 15,
+			})
+			websocket_pkg.DefaultHub.Broadcast(fmt.Sprintf("%d", projectID), string(progressMsg))
+		}
+
+		// 2. Create Proxy (360p, fast hardware encode)
+		log.Printf("Creating proxy video for project %d on GPU (NVENC)...", projectID)
+		// ffmpeg -i original.mp4 -vf scale=-2:360 -c:v h264_nvenc -preset p4 -cq 28 -c:a aac -b:a 128k proxy.mp4
+		proxyCmd := exec.Command("ffmpeg", "-y", "-i", originalPath, "-vf", "scale=-2:360", "-c:v", "h264_nvenc", "-preset", "p4", "-cq", "28", "-c:a", "aac", "-b:a", "128k", proxyPath)
+		if err := proxyCmd.Run(); err != nil {
+			log.Printf("Error creating proxy for project %d: %v", projectID, err)
+			failProject(projectID, "Failed to create proxy video")
+			return
+		}
 	}
 
 	// 3. Update Project Database

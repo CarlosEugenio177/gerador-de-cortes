@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"clipforge-gateway/internal/models"
@@ -29,11 +32,34 @@ func CreateProject(c *fiber.Ctx) error {
 	uploadDir := "./uploads"
 	os.MkdirAll(uploadDir, os.ModePerm)
 	
-	filename := fmt.Sprintf("%s_%s", uuid.New().String(), file.Filename)
-	savePath := filepath.Join(uploadDir, filename)
+	tempFilename := fmt.Sprintf("temp_%s_%s", uuid.New().String(), file.Filename)
+	tempPath := filepath.Join(uploadDir, tempFilename)
 	
-	if err := c.SaveFile(file, savePath); err != nil {
+	if err := c.SaveFile(file, tempPath); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
+	}
+
+	// Calculate MD5 hash
+	f, err := os.Open(tempPath)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to read saved file"})
+	}
+	h := md5.New()
+	io.Copy(h, f)
+	f.Close()
+	hashStr := hex.EncodeToString(h.Sum(nil))
+
+	// Determine final path
+	finalFilename := hashStr + filepath.Ext(file.Filename)
+	savePath := filepath.Join(uploadDir, finalFilename)
+
+	// Check if already exists (Deduplication)
+	if _, err := os.Stat(savePath); err == nil {
+		// File already exists, reuse it and delete temp file
+		os.Remove(tempPath)
+	} else {
+		// Move temp file to final destination
+		os.Rename(tempPath, savePath)
 	}
 
 	// Create DB Record
