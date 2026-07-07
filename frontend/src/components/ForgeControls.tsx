@@ -1,7 +1,8 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { useState } from "react";
-import { Flame, Hammer, Scissors, Video, Settings, Play, Type, Settings2, ShieldAlert, FileText, ChevronLeft } from "lucide-react";
+import { Flame, Hammer, Scissors, Video, Settings, Play, Type, Settings2, ShieldAlert, FileText, ChevronLeft, Info } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 
 const i18n = {
@@ -124,21 +125,27 @@ export function ForgeControls() {
     setForgeSettings({ forgeAspectRatios: newFormats });
   };
 
-  const renderToggle = (label: string, icon: React.ReactNode, value: string, current: string, setter: (val: string) => void) => (
-    <button
-      type="button"
-      disabled={isProcessing}
-      onClick={() => setter(value)}
-      className={`flex-1 flex flex-col items-center justify-center py-3 px-2 rounded-md border transition-all ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''} ${
-        current === value || (Array.isArray(current) && current.includes(value))
-          ? 'bg-zinc-900 border-orange-500/50 shadow-[0_0_15px_rgba(249,115,22,0.15)] text-orange-500' 
-          : 'bg-black border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300'
-      }`}
-    >
-      <div className="mb-1">{icon}</div>
-      <span className="text-[10px] font-bold tracking-wider uppercase text-center">{label}</span>
-    </button>
-  );
+  const renderToggle = (label: string, icon: React.ReactNode, value: string, current: string | string[], setter: (val: string) => void) => {
+    const isActive = current === value || (Array.isArray(current) && current.includes(value));
+    return (
+      <motion.button
+        whileHover={!isProcessing ? { scale: 1.02 } : {}}
+        whileTap={!isProcessing ? { scale: 0.98 } : {}}
+        type="button"
+        disabled={isProcessing}
+        onClick={() => setter(value)}
+        className={`flex-1 flex flex-col items-center justify-center py-3.5 px-2 rounded-lg border transition-all duration-300 relative overflow-hidden ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''} ${
+          isActive
+            ? 'bg-gradient-to-b from-zinc-900 to-[#111] border-orange-500/50 shadow-[0_0_20px_rgba(249,115,22,0.15)] text-orange-500' 
+            : 'bg-[#0a0a0a] border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 hover:bg-[#111]'
+        }`}
+      >
+        {isActive && <div className="absolute top-0 left-0 w-full h-full bg-orange-500/5 blur-xl pointer-events-none" />}
+        <div className={`mb-1.5 transition-transform duration-300 ${isActive ? 'scale-110 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]' : ''}`}>{icon}</div>
+        <span className="text-[10px] font-bold tracking-wider uppercase text-center relative z-10">{label}</span>
+      </motion.button>
+    );
+  };
 
   return (
     <div className="flex flex-col h-full bg-[#050505] relative">
@@ -323,22 +330,26 @@ export function ForgeControls() {
       {/* Footer / Submit */}
       <div className="p-6 bg-black border-t border-zinc-900 z-10 sticky bottom-0">
         {isProcessing ? (
-          <button
+          <motion.button
+            whileTap={{ scale: 0.95 }}
             onClick={cancelProcessing}
-            className="w-full flex items-center justify-center space-x-2 bg-zinc-900 hover:bg-red-900/40 text-red-500 border border-red-900/50 font-black py-4 px-4 rounded transition-all duration-300 transform active:scale-95 shadow-[0_0_20px_rgba(220,38,38,0.15)] uppercase tracking-[0.2em] text-xs"
+            className="w-full flex items-center justify-center space-x-2 bg-zinc-900 hover:bg-red-900/40 text-red-500 border border-red-900/50 font-black py-4 px-4 rounded transition-all duration-300 shadow-[0_0_20px_rgba(220,38,38,0.15)] uppercase tracking-[0.2em] text-xs relative overflow-hidden"
           >
             <div className="animate-pulse w-2 h-2 bg-red-500 rounded-full mr-2" />
-            {t.cancel}
-          </button>
+            <span className="relative z-10">{t.cancel}</span>
+          </motion.button>
         ) : (
-          <button
+          <motion.button
+            whileHover={(!videoFile && !projectId) ? {} : { scale: 1.02 }}
+            whileTap={(!videoFile && !projectId) ? {} : { scale: 0.98 }}
             onClick={handleForge}
             disabled={(!videoFile && !projectId) || isProcessing}
-            className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-black py-4 px-4 rounded transition-all duration-300 transform active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(234,88,12,0.3)] uppercase tracking-[0.2em] text-xs"
+            className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-black py-4 px-4 rounded transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(234,88,12,0.3)] hover:shadow-[0_0_30px_rgba(234,88,12,0.5)] uppercase tracking-[0.2em] text-xs relative overflow-hidden group"
           >
-            <Flame className="w-4 h-4" />
-            <span>{t.ignite}</span>
-          </button>
+            <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
+            <Flame className="w-4 h-4 relative z-10" />
+            <span className="relative z-10">{t.ignite}</span>
+          </motion.button>
         )}
       </div>
     </div>

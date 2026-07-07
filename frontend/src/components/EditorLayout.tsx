@@ -1,6 +1,6 @@
 "use client";
 
-import { MonitorPlay, Download, ChevronLeft, RefreshCw } from "lucide-react";
+import { MonitorPlay, Download, ChevronLeft, RefreshCw, Scissors } from "lucide-react";
 import { useAppStore } from "../store/useAppStore";
 import { motion } from "framer-motion";
 import { OssPopup } from "./OssPopup";
@@ -123,35 +123,56 @@ export function EditorLayout() {
       <div className="flex-1 flex overflow-hidden z-10 relative">
         
         {/* Left Sidebar: Clips Feed or Tools */}
-        <aside className="w-80 border-r border-zinc-900 bg-[#050505] flex flex-col shrink-0">
+        <aside className="w-80 border-r border-zinc-900 bg-[#050505] flex flex-col shrink-0 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full blur-[50px] pointer-events-none" />
+          
           {!advancedMode ? (
             <>
-              <div className="p-4 border-b border-zinc-900">
-                <h2 className="text-xs font-mono uppercase tracking-widest text-zinc-500">Generated Clips ({clips.length})</h2>
+              <div className="p-4 border-b border-zinc-900 bg-[#0a0a0a] sticky top-0 z-10 flex items-center justify-between">
+                <h2 className="text-xs font-black uppercase tracking-widest text-zinc-300 flex items-center gap-2">
+                  <Scissors className="w-3 h-3 text-orange-500" />
+                  Generated Clips
+                </h2>
+                <span className="text-[10px] text-orange-500 font-mono bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20">{clips.length}</span>
               </div>
               
-              <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {clips.map((clip, idx) => (
-                  <button
-                    key={clip.id}
-                    onClick={() => setSelectedClip(clip)}
-                    className={`w-full text-left p-4 rounded-md flex flex-col justify-between transition-all border ${
-                      selectedClip?.id === clip.id 
-                        ? "bg-zinc-900 border-zinc-700 shadow-sm" 
-                        : "bg-transparent border-transparent hover:bg-zinc-900/50"
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <h4 className="text-zinc-100 text-sm font-medium leading-tight pr-2">{clip.title}</h4>
-                      <div className="bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0 border border-green-500/20">
-                        ★ {clip.score}
-                      </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div className="relative pl-3 border-l-2 border-zinc-900 space-y-6">
+                  {clips.map((clip, idx) => (
+                    <div key={clip.id} className="relative">
+                      {/* Timeline Node */}
+                      <div className={`absolute -left-[17px] top-4 w-3 h-3 rounded-full border-2 border-[#050505] ${
+                        selectedClip?.id === clip.id ? "bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]" : "bg-zinc-700"
+                      }`} />
+                      
+                      <button
+                        onClick={() => setSelectedClip(clip)}
+                        className={`w-full text-left p-4 rounded-xl flex flex-col justify-between transition-all duration-300 border relative overflow-hidden group ${
+                          selectedClip?.id === clip.id 
+                            ? "bg-gradient-to-b from-zinc-900 to-[#0a0a0a] border-orange-500/50 shadow-[0_5px_15px_rgba(249,115,22,0.1)]" 
+                            : "bg-[#0a0a0a] border-zinc-800 hover:border-zinc-700 hover:bg-[#111]"
+                        }`}
+                      >
+                        {selectedClip?.id === clip.id && <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-orange-600 to-amber-400" />}
+                        
+                        <div className="flex justify-between items-start mb-2 relative z-10">
+                          <h4 className={`text-sm font-bold leading-tight pr-2 ${selectedClip?.id === clip.id ? 'text-orange-50' : 'text-zinc-300'}`}>{clip.title}</h4>
+                          <div className={`px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0 border ${
+                            clip.score >= 90 ? 'bg-orange-500/20 text-orange-500 border-orange-500/30' : 'bg-green-500/10 text-green-500 border-green-500/20'
+                          }`}>
+                            ★ {clip.score}
+                          </div>
+                        </div>
+                        <p className="text-zinc-500 text-xs line-clamp-2 leading-relaxed mb-3 relative z-10">{clip.description}</p>
+                        
+                        <div className="flex items-center justify-between mt-auto pt-3 border-t border-zinc-800/50 relative z-10">
+                          <span className="text-zinc-600 text-[9px] font-black tracking-widest uppercase">Version {(Math.floor(idx / 3)) + 1}</span>
+                          <span className="text-zinc-700 text-[10px] font-mono">#{clip.id}</span>
+                        </div>
+                      </button>
                     </div>
-                    <p className="text-zinc-400 text-xs line-clamp-2 leading-relaxed mb-3">{clip.description}</p>
-                    
-                    <span className="text-zinc-600 text-[10px] font-mono">CLIP 0{idx + 1}</span>
-                  </button>
-                ))}
+                  ))}
+                </div>
               </div>
             </>
           ) : (

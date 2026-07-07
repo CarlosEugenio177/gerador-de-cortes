@@ -94,7 +94,7 @@ export default function DashboardPage() {
       <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-red-700/10 rounded-[100%] blur-[150px] pointer-events-none animate-pulse" style={{ animationDuration: '6s' }} />
 
       {/* Header */}
-      <header className="flex justify-between items-center mb-12 border-b border-zinc-900 pb-6 relative z-10">
+      <header className="flex justify-between items-center mb-10 border-b border-zinc-900 pb-6 relative z-10">
         <div className="flex items-center space-x-3">
           <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-600 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(249,115,22,0.3)]">
             <Flame className="w-5 h-5 text-white" />
@@ -121,6 +121,25 @@ export default function DashboardPage() {
           </button>
         </div>
       </header>
+
+      {/* Stats Area */}
+      <div className="max-w-6xl mx-auto relative z-10 mb-10 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-[#050505] border border-zinc-900 rounded-xl p-6 flex flex-col items-center justify-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full blur-3xl" />
+          <h4 className="text-zinc-500 text-xs font-mono uppercase tracking-widest mb-2">Total Forges</h4>
+          <span className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-zinc-500">{projects.length}</span>
+        </div>
+        <div className="bg-[#050505] border border-zinc-900 rounded-xl p-6 flex flex-col items-center justify-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-3xl" />
+          <h4 className="text-zinc-500 text-xs font-mono uppercase tracking-widest mb-2">Clips Forged</h4>
+          <span className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-orange-400 to-red-600">{clips.length}</span>
+        </div>
+        <div className="bg-[#050505] border border-zinc-900 rounded-xl p-6 flex flex-col items-center justify-center relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-3xl" />
+          <h4 className="text-zinc-500 text-xs font-mono uppercase tracking-widest mb-2">Time Saved</h4>
+          <span className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-zinc-500">~{Math.floor(clips.length * 0.5)}h</span>
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="max-w-6xl mx-auto relative z-10 mb-8 flex space-x-8 border-b border-zinc-900">
@@ -150,15 +169,18 @@ export default function DashboardPage() {
           </div>
         ) : activeTab === 'projects' ? (
           projects.length === 0 ? (
-            <div className="border border-dashed border-zinc-800 rounded-xl p-12 text-center flex flex-col items-center justify-center bg-[#050505]/80 backdrop-blur">
-              <Hammer className="w-12 h-12 text-zinc-700 mb-4" />
-              <h3 className="text-lg font-bold text-zinc-400 uppercase tracking-widest">No Projects Yet</h3>
-              <p className="text-zinc-600 text-sm mt-2 max-w-sm">Start your factory by forging a new video. The AI will do the heavy lifting.</p>
+            <div className="border border-zinc-900 rounded-xl p-16 text-center flex flex-col items-center justify-center bg-gradient-to-b from-[#0a0a0a] to-[#050505] shadow-2xl relative overflow-hidden">
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-orange-600/10 blur-[100px] pointer-events-none" />
+              <div className="w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center mb-6 relative z-10 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
+                <Hammer className="w-7 h-7 text-zinc-500" />
+              </div>
+              <h3 className="text-xl font-black text-zinc-200 uppercase tracking-widest z-10">The Forge is Cold</h3>
+              <p className="text-zinc-500 text-sm mt-3 max-w-sm z-10">Start your factory by igniting a new forge. The AI will do the heavy lifting.</p>
               <button 
                 onClick={() => router.push("/forge")}
-                className="mt-6 border border-zinc-700 hover:border-orange-500 text-zinc-400 hover:text-orange-500 font-bold py-2 px-6 rounded transition-all duration-300 uppercase tracking-wider text-xs"
+                className="mt-8 border border-zinc-800 bg-[#020202] hover:border-orange-500 text-zinc-300 hover:text-white font-bold py-2.5 px-8 rounded transition-all duration-300 uppercase tracking-widest text-xs shadow-lg hover:shadow-[0_0_20px_rgba(234,88,12,0.2)] z-10"
               >
-                Start First Forge
+                Ignite First Forge
               </button>
             </div>
           ) : (
@@ -167,52 +189,46 @@ export default function DashboardPage() {
                 <div 
                   key={proj.id} 
                   onClick={() => router.push(proj.status === 'completed' ? `/editor/${proj.id}` : `/forge?project=${proj.id}`)}
-                  className="bg-[#0a0a0a]/90 backdrop-blur border border-zinc-800 hover:border-orange-500/50 rounded-xl p-5 cursor-pointer transition-all duration-300 hover:shadow-[0_0_30px_rgba(249,115,22,0.15)] group relative flex flex-col"
+                  className="bg-gradient-to-b from-[#0a0a0a] to-[#050505] border border-zinc-800 hover:border-orange-500/50 rounded-xl p-6 cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(249,115,22,0.15)] group relative flex flex-col overflow-hidden"
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-bold text-zinc-200 truncate pr-4">{proj.title}</h3>
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-orange-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="flex justify-between items-start mb-4">
+                    <h3 className="font-bold text-zinc-200 truncate pr-4 text-lg">{proj.title}</h3>
                     <button 
                       onClick={(e) => handleDeleteProject(e, proj.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded"
                       title="Delete Project"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   
-                  <div className="mb-4">
+                  <div className="mb-6">
                     {proj.status === 'completed' ? (
-                      <span className="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-emerald-500/20">Ready</span>
+                      <span className="bg-emerald-500/5 text-emerald-500 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-emerald-500/20">Ready</span>
                     ) : proj.status === 'cancelled' ? (
-                      <span className="bg-zinc-500/10 text-zinc-400 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-zinc-500/20">Cancelled</span>
+                      <span className="bg-zinc-500/5 text-zinc-400 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-zinc-500/20">Cancelled</span>
                     ) : proj.status === 'failed' ? (
-                      <span className="bg-red-500/10 text-red-500 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-red-500/20 flex items-center gap-1 w-max"><AlertTriangle className="w-3 h-3"/> Failed</span>
+                      <span className="bg-red-500/5 text-red-500 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-red-500/20 flex items-center gap-1 w-max"><AlertTriangle className="w-3 h-3"/> Failed</span>
                     ) : (
-                      <span className="bg-orange-500/10 text-orange-500 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-orange-500/20 flex items-center gap-1 w-max">
+                      <span className="bg-orange-500/10 text-orange-500 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-orange-500/20 flex items-center gap-1.5 w-max">
                         <Loader2 className="w-3 h-3 animate-spin" /> Forging
                       </span>
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between text-zinc-500 text-xs mt-auto pt-4 space-x-4">
+                  <div className="flex items-center justify-between text-zinc-500 text-xs mt-auto pt-4 border-t border-zinc-900">
                     <div className="flex items-center">
-                      <Calendar className="w-3 h-3 mr-1" />
+                      <Calendar className="w-3 h-3 mr-1.5 opacity-70" />
                       {new Date(proj.created_at).toLocaleDateString()}
                     </div>
                     {proj.clips && proj.clips.length > 0 && (
-                      <div className="flex items-center text-orange-500/80 font-bold">
-                        <Video className="w-3 h-3 mr-1" />
+                      <div className="flex items-center text-orange-500 font-bold">
+                        <Video className="w-3 h-3 mr-1.5" />
                         {proj.clips.length} Clips
                       </div>
                     )}
                   </div>
-
-                  {(proj.status === 'completed' || proj.status === 'cancelled') && (
-                    <div className="mt-4 pt-4 border-t border-zinc-900 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Open Studio</span>
-                      <Play className="w-4 h-4 text-orange-500" />
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
