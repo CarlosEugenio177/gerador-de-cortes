@@ -101,6 +101,7 @@ interface AppState {
   extractTranscript: (projectId: string) => Promise<void>;
   renderCustomProject: (projectId: string) => Promise<void>;
   cancelProcessing: () => Promise<void>;
+  hydrateProjectState: (projectId: string) => Promise<void>;
 }
 
 export const useAppStore = create<AppState>()(
@@ -299,6 +300,33 @@ export const useAppStore = create<AppState>()(
           }
         }
         set({ processingStatus: 'IDLE', statusMessage: 'Cancelled', progress: 0 });
+      },
+      hydrateProjectState: async (projectId: string) => {
+        try {
+          const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+          const res = await fetch(`${API_URL}/api/v1/projects/${projectId}/state`);
+          if (!res.ok) throw new Error("Failed to fetch project state");
+          
+          const data = await res.json();
+          if (data && data.project) {
+            const project = data.project;
+            const videoPath = project.proxy_file || project.original_file;
+            set({
+              projectId: String(project.id),
+              projectName: project.title || '',
+              processingStatus: project.status as any,
+              statusMessage: 'Project loaded from server',
+              clips: project.clips || [],
+              ...(videoPath ? { videoUrl: `${API_URL}/${videoPath.replace(/\\/g, '/')}` } : {})
+            });
+
+            if (data.transcript) {
+              set({ transcript: data.transcript });
+            }
+          }
+        } catch (err) {
+          console.error("Failed to hydrate project state", err);
+        }
       },
     }),
     {

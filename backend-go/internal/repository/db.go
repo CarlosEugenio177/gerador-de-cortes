@@ -27,7 +27,14 @@ func ConnectDB(cfg *config.Config) {
 	log.Println("Connected to database successfully")
 
 	// Auto-migrate tables
-	err = DB.AutoMigrate(&models.Project{}, &models.Clip{}, &models.AuditLog{})
+	err = DB.AutoMigrate(
+		&models.Project{},
+		&models.Clip{},
+		&models.AuditLog{},
+		&models.BrandKit{},
+		&models.SubtitlePreset{},
+		&models.ExportProfile{},
+	)
 	if err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}

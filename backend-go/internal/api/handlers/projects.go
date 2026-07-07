@@ -101,6 +101,31 @@ func GetProject(c *fiber.Ctx) error {
 	return c.JSON(project)
 }
 
+func GetProjectState(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var project models.Project
+	
+	if err := repository.DB.Preload("Clips").First(&project, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Project not found"})
+	}
+
+	var transcript interface{} = nil
+	if project.OriginalFile != "" {
+		transcriptPath := project.OriginalFile + ".transcript.json"
+		if data, err := os.ReadFile(transcriptPath); err == nil {
+			var t interface{}
+			if json.Unmarshal(data, &t) == nil {
+				transcript = t
+			}
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"project": project,
+		"transcript": transcript,
+	})
+}
+
 func DeleteProject(c *fiber.Ctx) error {
 	id := c.Params("id")
 	
@@ -109,7 +134,7 @@ func DeleteProject(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Project not found"})
 	}
 
-	// Unlink clips instead of deleting them
+	// Unlink clips instead of deleting them (or delete them if preferred, but unlinking is safer if clips are shared)
 	if err := repository.DB.Model(&models.Clip{}).Where("project_id = ?", id).Update("project_id", nil).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to unlink clips from project"})
 	}
@@ -117,6 +142,22 @@ func DeleteProject(c *fiber.Ctx) error {
 	if err := repository.DB.Delete(&project).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete project"})
 	}
+
+	// Deep Deletion - Remove associated files
+	go func(p models.Project) {
+		if p.OriginalFile != "" {
+			os.Remove(p.OriginalFile)
+			os.Remove(p.OriginalFile + ".transcript.json")
+			os.Remove(p.OriginalFile + ".thumb.jpg")
+			os.Remove(p.OriginalFile + ".waveform.png")
+		}
+		if p.ProxyFile != "" {
+			os.Remove(p.ProxyFile)
+		}
+		if p.AudioFile != "" {
+			os.Remove(p.AudioFile)
+		}
+	}(project)
 
 	return c.JSON(fiber.Map{"status": "deleted"})
 }

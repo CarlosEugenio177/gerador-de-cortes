@@ -11,8 +11,16 @@ class LLMViralMoment(BaseModel):
     title: str = Field(..., description="A catchy title for the clip")
     description: str = Field(..., description="A short description of why this clip is viral")
 
+class LLMEditOperation(BaseModel):
+    op_type: str = Field(..., description="Type of operation: 'clip', 'crop', 'add_subtitle', 'remove_silences', 'remove_noise', 'speed_ramp'")
+    start_time: float = Field(default=0.0, description="Start time in seconds (if applicable)")
+    end_time: float = Field(default=0.0, description="End time in seconds (if applicable)")
+    value: str = Field(default="", description="Value for the operation (e.g. '9:16' for crop, 'hormozi_yellow' for subtitle)")
+    description: str = Field(default="", description="Reasoning or description for this operation")
+
 class LLMMomentsOutput(BaseModel):
     clips: List[LLMViralMoment] = Field(..., description="List of viral moments identified")
+    global_operations: List[LLMEditOperation] = Field(default=[], description="Global video operations to apply (e.g. crop 9:16, add_subtitle)")
 
 class LLMCommandConfig(BaseModel):
     clip_count: int = Field(default=3, description="Number of clips requested by the user")
@@ -24,3 +32,4 @@ class LLMCommandConfig(BaseModel):
     subtitle_style: str = Field(default="default", description="The requested style or color for the subtitles (e.g., 'hormozi_yellow', 'default', 'none')")
     video_format: str = Field(default="9:16", description="The requested aspect ratio format for the video (e.g., '16:9' for horizontal/youtube, '9:16' for vertical/tiktok, '1:1' for square)")
     manual_timestamps: list[list[float]] = Field(default=[], description="List of [start, end] pairs in seconds if the user specified exact times to clip")
+    global_operations: List[LLMEditOperation] = Field(default=[], description="List of explicit video editing operations requested (e.g. crop, add_subtitle, speed_ramp)")

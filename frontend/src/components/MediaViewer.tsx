@@ -34,7 +34,8 @@ export function MediaViewer() {
     }
   };
 
-  const currentVideoSrc = selectedClip ? `http://localhost:8000/${selectedClip.video_url}` : videoUrl || undefined;
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const currentVideoSrc = selectedClip ? `${API_URL}/${selectedClip.video_url.replace(/\\/g, '/')}` : videoUrl || undefined;
 
   return (
     <div className="flex-1 flex bg-[#000000] relative overflow-hidden h-full">

@@ -105,13 +105,21 @@ export default function DashboardPage() {
           </div>
         </div>
         
-        <button 
-          onClick={() => router.push("/forge")}
-          className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold py-2 px-6 rounded transition-all duration-300 shadow-[0_0_15px_rgba(234,88,12,0.3)] flex items-center gap-2 uppercase tracking-wider text-xs"
-        >
-          <Hammer className="w-4 h-4" />
-          New Forge
-        </button>
+        <div className="flex space-x-4">
+          <button 
+            onClick={() => router.push("/dashboard")}
+            className="bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-bold py-2 px-6 rounded transition-all duration-300 border border-zinc-800 flex items-center gap-2 uppercase tracking-wider text-xs"
+          >
+            System Metrics
+          </button>
+          <button 
+            onClick={() => router.push("/forge")}
+            className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold py-2 px-6 rounded transition-all duration-300 shadow-[0_0_15px_rgba(234,88,12,0.3)] flex items-center gap-2 uppercase tracking-wider text-xs"
+          >
+            <Hammer className="w-4 h-4" />
+            New Forge
+          </button>
+        </div>
       </header>
 
       {/* Tabs */}

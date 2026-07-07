@@ -84,6 +84,7 @@ func main() {
 	projects.Post("/", handlers.CreateProject)
 	projects.Get("/", handlers.GetProjects)
 	projects.Get("/:id", handlers.GetProject)
+	projects.Get("/:id/state", handlers.GetProjectState)
 	projects.Delete("/:id", handlers.DeleteProject)
 	projects.Post("/:id/reprocess", handlers.ReprocessProject)
 	projects.Post("/:id/cancel", handlers.CancelProject)
@@ -96,6 +97,15 @@ func main() {
 	clips := v1.Group("/clips")
 	clips.Get("/", handlers.GetAllClips)
 	clips.Delete("/:id", handlers.DeleteClip)
+
+	// Assets
+	assets := v1.Group("/assets")
+	assets.Get("/brand-kits", handlers.GetBrandKits)
+	assets.Get("/subtitle-presets", handlers.GetSubtitlePresets)
+	assets.Get("/export-profiles", handlers.GetExportProfiles)
+
+	// Metrics
+	v1.Get("/metrics/system", handlers.GetSystemMetrics)
 
 	// Listen
 	log.Printf("Starting API Gateway on port %s...", cfg.Port)

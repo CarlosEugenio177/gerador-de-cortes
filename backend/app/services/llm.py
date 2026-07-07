@@ -16,11 +16,10 @@ class LLMService:
         self.client = ollama.Client(host=self.host)
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True)
-    def extract_viral_moments(self, transcript_segments: List[Dict]) -> List[Dict]:
+    def extract_viral_moments(self, transcript_segments: List[Dict], user_prompt: str = "") -> Dict:
         """
-        Takes a list of transcript segments and returns a list of viral moments.
-        Each segment in transcript_segments should have 'start_time', 'end_time', and 'text'.
-        Returns: list of dicts with 'start_time', 'end_time', 'viral_score', 'description'.
+        Takes a list of transcript segments and a user prompt, returning an editing plan.
+        Returns: dict with 'clips' and 'global_operations'.
         """
         if not transcript_segments:
             return []
@@ -31,17 +30,21 @@ class LLMService:
             formatted_script += f"[{seg['start_time']:.2f} - {seg['end_time']:.2f}] {seg['text']}\n"
 
         prompt = f"""
-You are an expert Social Media Manager and Video Editor specializing in TikTok, Instagram Reels, and YouTube Shorts.
-Your task is to analyze the following video transcript and identify the most viral, engaging, and interesting short clips.
+You are an expert Video Editor AI named ClipForge.
+Your task is to analyze the user's request and the transcript, then generate an editing plan.
 
-Here is the transcript with timestamps:
+Transcript:
 {formatted_script}
 
+User Request:
+{user_prompt if user_prompt else "Find the best clips."}
+
 CRITICAL RULES:
-1. Identify 1 to 3 highly engaging moments.
-2. The duration of EACH clip (end_time - start_time) MUST be strictly between 30 and 60 seconds. Do not create clips shorter than 30 seconds under any circumstances.
-3. Ensure the clip has a strong hook (opening) and a satisfying conclusion.
-4. Calculate a 'viral_score' from 0.0 to 100.0 based on how likely it is to go viral.
+1. Identify highly engaging moments (clips) that match the requested duration and topic.
+2. Calculate a 'viral_score' (0.0 to 100.0) for each clip.
+3. Also provide 'global_operations' which are mathematical intentions based on the user request.
+   - op_type can be: 'crop' (value e.g. '9:16'), 'add_subtitle', 'remove_silences', 'remove_noise'.
+   - Include these if the user implies them (e.g., if they ask for TikTok, add crop 9:16).
 """
         logger.info(f"Sending prompt to Ollama ({self.model}) to find viral moments...")
         
@@ -70,31 +73,12 @@ CRITICAL RULES:
                     # Try Pydantic validation directly
                     try:
                         validated_output = LLMMomentsOutput(**parsed_json)
-                        return [clip.model_dump() for clip in validated_output.clips]
+                        return validated_output.model_dump()
                     except Exception:
                         pass
                         
-                    # Manual fallback
-                    for val in parsed_json.values():
-                        if isinstance(val, list):
-                            parsed_json = val
-                            break
-                    if isinstance(parsed_json, dict) and "start_time" in parsed_json:
-                        parsed_json = [parsed_json]
-                        
-                if not isinstance(parsed_json, list):
-                    logger.error(f"Ollama response is not a JSON array. Raw response: {content}")
-                    return []
-                    
-                valid_clips = []
-                for item in parsed_json:
-                    try:
-                        validated_clip = LLMViralMoment(**item)
-                        valid_clips.append(validated_clip.model_dump())
-                    except Exception as ve:
-                        logger.warning(f"Skipping invalid clip from LLM: {ve}")
-                        
-                return valid_clips
+                # Fallback to returning just clips if parsing fails to get the full object
+                return {"clips": [], "global_operations": []}
 
             except Exception as e:
                 logger.error(f"Failed to parse LLM JSON: {e}")
@@ -123,6 +107,12 @@ Crucially, determine the 'video_format' requested by the user:
 - "9:16" for TikTok, Instagram Reels, Shorts, Vertical formats. (Default if unspecified)
 - "16:9" for YouTube, Horizontal, Cinematic formats.
 - "1:1" for Square, Instagram Feed formats.
+
+MATH OPERATIONS (global_operations):
+Translate the user's intent into an array of explicit mathematical `EditOperation` objects:
+- `op_type` must be one of: 'crop', 'clip', 'add_subtitle', 'remove_silences', 'remove_noise', 'speed_ramp'.
+- Example: User wants a TikTok format -> Output a 'crop' operation with value '9:16'.
+- Example: User wants to remove silence -> Output a 'remove_silences' operation.
 
 DURATION RULES:
 If the user specifies a duration in minutes (e.g. "corte de 5 minutos", "5 min"), you MUST convert it to seconds (e.g. 5 * 60 = 300) and set BOTH `min_duration` and `max_duration` to that value. If they specify seconds, use that. If they don't specify, default to 30.0 and 60.0.

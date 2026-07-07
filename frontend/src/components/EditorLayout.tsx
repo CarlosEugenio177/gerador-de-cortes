@@ -10,12 +10,10 @@ import { StyleEditor } from "./StyleEditor";
 import { TranscriptEditor } from "./TranscriptEditor";
 
 export function EditorLayout() {
-  const { clips, selectedClip, setSelectedClip, showOssPopup, setShowOssPopup, projectId, reprocessProject, processingStatus, videoUrl } = useAppStore();
+  const { clips, selectedClip, setSelectedClip, showOssPopup, setShowOssPopup, projectId, reprocessProject, processingStatus, videoUrl, advancedMode } = useAppStore();
   
-  const [editorMode, setEditorMode] = useState<'clips' | 'full_video'>('clips');
-
-  const currentVideoSrc = (editorMode === 'clips' 
-    ? (selectedClip ? `http://localhost:8000/${selectedClip.video_url}` : undefined)
+  const currentVideoSrc = (!advancedMode 
+    ? (selectedClip ? `http://localhost:8000/${selectedClip.video_url.replace(/\\/g, '/')}` : undefined)
     : videoUrl) || undefined;
 
   const handleDownloadAll = () => {
@@ -60,27 +58,31 @@ export function EditorLayout() {
           </button>
           <div className="flex flex-col">
             <span className="font-mono text-xs text-zinc-500 uppercase tracking-widest">ClipForge Studio</span>
-            <span className="text-sm font-medium">{editorMode === 'clips' ? (selectedClip?.title || "Project Result") : "Vídeo Original"}</span>
+            <span className="text-sm font-medium">{!advancedMode ? (selectedClip?.title || "Project Result") : "Vídeo Original"}</span>
           </div>
         </div>
 
         {/* Mode Switcher */}
         <div className="absolute left-1/2 -translate-x-1/2 flex bg-zinc-900/50 p-1 rounded-lg border border-zinc-800">
           <button 
-            onClick={() => setEditorMode('clips')}
+            onClick={() => {
+              if (advancedMode) useAppStore.getState().toggleAdvancedMode();
+            }}
             className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all ${
-              editorMode === 'clips' ? 'bg-orange-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'
+              !advancedMode ? 'bg-orange-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
-            Modo Cortes
+            Quick Mode
           </button>
           <button 
-            onClick={() => setEditorMode('full_video')}
+            onClick={() => {
+              if (!advancedMode) useAppStore.getState().toggleAdvancedMode();
+            }}
             className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-md transition-all ${
-              editorMode === 'full_video' ? 'bg-orange-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'
+              advancedMode ? 'bg-orange-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-300'
             }`}
           >
-            Modo Edição
+            Pro Mode
           </button>
         </div>
         
@@ -122,7 +124,7 @@ export function EditorLayout() {
         
         {/* Left Sidebar: Clips Feed or Tools */}
         <aside className="w-80 border-r border-zinc-900 bg-[#050505] flex flex-col shrink-0">
-          {editorMode === 'clips' ? (
+          {!advancedMode ? (
             <>
               <div className="p-4 border-b border-zinc-900">
                 <h2 className="text-xs font-mono uppercase tracking-widest text-zinc-500">Generated Clips ({clips.length})</h2>
@@ -178,7 +180,7 @@ export function EditorLayout() {
         </main>
         
         {/* Right Sidebar: Transcript Editor */}
-        {editorMode === 'full_video' && (
+        {advancedMode && (
           <aside className="w-96 border-l border-zinc-900 bg-[#050505] flex flex-col shrink-0">
             <TranscriptEditor />
           </aside>

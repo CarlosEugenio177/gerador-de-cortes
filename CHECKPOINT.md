@@ -270,5 +270,11 @@ Aplicação das Operações via Timeline Renderer (FFmpeg filter_complex)
 * **Fase 2 (Proxy e Fingerprint):** Implementado cálculo de SHA256 em Go para garantir deduplicação criptograficamente segura na entrada. Adicionado paralelismo usando `asyncio.gather` no AI Engine para gerar assets visuais (waveforms, thumbnails) simultaneamente enquanto o processador GPU extrai o áudio principal, eliminando tempo ocioso.
 * **Fase 3 (GPU HWAccel e Fallbacks):** `backend-render` forçado a injetar flag nativa `-hwaccel cuda` antes das streams de input para decodificar vídeos via GPU, livrando a CPU completamente. Também injetado pipeline defensivo que aplica um Fallback de transcode para CPU (`libx264`) de modo automático em caso de esgotamento repentino de VRAM da NVENC, impossibilitando que a API devolva erro para o cliente.
 * **Fase 4 (Escalabilidade Horizontal Completa):** Os três motores do sistema (Gateway Go, Python Celery Worker, Render Engine) foram adaptados para ler Redis Streams utilizando `Consumer Names` dinâmicos baseados no Hostname (`os.Hostname()`). Agora, é possível rodar `docker-compose up --scale render-worker=5` ou escalar via Kubernetes sem nenhum collision de ID nas listagens de pendências (PEL) do Redis.
-
+* **Fase 5 (Transformação em Produto):**
+  * Sincronização e Hidratação Total de Estado do backend no frontend (`hydrateProjectState` em Zustand). O Backend agora envia a transcrição e clipes atrelados, removendo totalmente mocks do Dashboard.
+  * Criação do sistema de Assets (BrandKit, SubtitlePreset, ExportProfile) no Go Gateway.
+  * Implementação da alternância entre Quick Mode (Clips Feed com Player 9:16) e Pro Mode (Editor completo com acesso a Transcript, Style Panel e Timeline).
+  * Refatoração do Prompt de Parse do LLM (Llama) utilizando `Pydantic Structured Outputs` para retornar intenções matemáticas explícitas em `LLMCommandConfig.global_operations` para alimentar diretamente o Render Engine.
+  * Construção da Interface de Observabilidade (`/dashboard`), consumindo métricas em tempo real (`gopsutil`) diretamente do servidor Go para monitorar RAM, CPU e Redis Ping.
+  * Implementada Deleção Profunda (Deep Deletion) de Projetos e Clipes no Go Gateway (`os.Remove` atrelado aos endpoints DELETE) limpando originais, audios, .ass e .json associados sem deixar órfãos físicos.
 

@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"log"
+	"os"
+
 	"github.com/gofiber/fiber/v2"
 	"clipforge-gateway/internal/models"
 	"clipforge-gateway/internal/repository"
@@ -25,6 +28,16 @@ func DeleteClip(c *fiber.Ctx) error {
 
 	if err := repository.DB.Delete(&clip).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to delete clip"})
+	}
+
+	// Deep Deletion - Remove associated file from disk
+	if clip.VideoURL != "" {
+		err := os.Remove(clip.VideoURL)
+		if err != nil {
+			log.Printf("Warning: Failed to delete physical file %s: %v", clip.VideoURL, err)
+		} else {
+			log.Printf("Successfully deleted physical file: %s", clip.VideoURL)
+		}
 	}
 
 	return c.JSON(fiber.Map{"status": "deleted"})
