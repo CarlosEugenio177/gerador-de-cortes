@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -40,12 +40,12 @@ func CreateProject(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
 	}
 
-	// Calculate MD5 hash
+	// Calculate SHA256 hash
 	f, err := os.Open(tempPath)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to read saved file"})
 	}
-	h := md5.New()
+	h := sha256.New()
 	io.Copy(h, f)
 	f.Close()
 	hashStr := hex.EncodeToString(h.Sum(nil))

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 
 	"clipforge-gateway/internal/models"
 	"clipforge-gateway/internal/repository"
@@ -60,7 +61,8 @@ func StartEventListeners() {
 func listenToStream(stream string, handler func(payload EventPayload, rawMsg string)) {
 	ctx := context.Background()
 	group := "go_gateway_group"
-	consumer := "go_gateway_consumer_1"
+	hostname, _ := os.Hostname()
+	consumer := fmt.Sprintf("go_gateway_consumer_%s", hostname)
 
 	err := RedisClient.XGroupCreateMkStream(ctx, stream, group, "0").Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
@@ -109,10 +111,26 @@ func listenToStream(stream string, handler func(payload EventPayload, rawMsg str
 	}
 }
 
+func insertAuditLog(projectID uint, status, message string) {
+	if projectID == 0 || status == "" {
+		return
+	}
+	audit := models.AuditLog{
+		ProjectID: projectID,
+		WorkerID:  "system",
+		Stage:     status,
+		Status:    status,
+		Error:     message,
+	}
+	repository.DB.Create(&audit)
+}
+
 func handleProgress(payload EventPayload, rawMsg string) {
 	log.Printf("[events:progress] Project %v: %s (%d%%)", payload.ProjectID, payload.Message, payload.Progress)
 	if payload.Status != "" {
-		repository.DB.Model(&models.Project{}).Where("id = ?", getProjectIDUint(payload.ProjectID)).Update("status", payload.Status)
+		pid := getProjectIDUint(payload.ProjectID)
+		repository.DB.Model(&models.Project{}).Where("id = ?", pid).Update("status", payload.Status)
+		insertAuditLog(pid, payload.Status, payload.Message)
 	}
 }
 
@@ -124,7 +142,8 @@ func handleClipsReady(payload EventPayload, rawMsg string) {
 	log.Printf("[events:clips_ready] Project %v has %d clips planned.", payload.ProjectID, len(payload.Clips))
 	projectID := getProjectIDUint(payload.ProjectID)
 	
-	repository.DB.Model(&models.Project{}).Where("id = ?", projectID).Update("status", models.StatusRendering)
+	repository.DB.Model(&models.Project{}).Where("id = ?", projectID).Update("status", models.StatusQueuedRender)
+	insertAuditLog(projectID, string(models.StatusQueuedRender), "Clips planeados. Aguardando render engine.")
 
 	var project models.Project
 	repository.DB.First(&project, projectID)
@@ -165,6 +184,7 @@ func handleClipCompleted(payload EventPayload, rawMsg string) {
 	if pendingCount == 0 {
 		log.Printf("All clips rendered for Project %v. Marking as completed.", projectID)
 		repository.DB.Model(&models.Project{}).Where("id = ?", projectID).Update("status", models.StatusCompleted)
+		insertAuditLog(projectID, string(models.StatusCompleted), "Todos os cortes foram renderizados com sucesso.")
 		
 		// Broadcast final completion
 		if websocket_pkg.DefaultHub != nil {
@@ -180,5 +200,7 @@ func handleClipCompleted(payload EventPayload, rawMsg string) {
 
 func handleFailed(payload EventPayload, rawMsg string) {
 	log.Printf("[events:failed] Project %v failed: %s", payload.ProjectID, payload.Error)
-	repository.DB.Model(&models.Project{}).Where("id = ?", getProjectIDUint(payload.ProjectID)).Update("status", models.StatusFailed)
+	pid := getProjectIDUint(payload.ProjectID)
+	repository.DB.Model(&models.Project{}).Where("id = ?", pid).Update("status", models.StatusFailed)
+	insertAuditLog(pid, string(models.StatusFailed), payload.Error)
 }

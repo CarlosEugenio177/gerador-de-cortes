@@ -17,7 +17,8 @@ def start_worker():
     
     stream_name = "stream:analyze"
     group_name = "python_ai_group"
-    consumer_name = "python_worker_1"
+    import socket
+    consumer_name = f"python_worker_{socket.gethostname()}"
 
     try:
         r.xgroup_create(stream_name, group_name, id='0', mkstream=True)
@@ -66,6 +67,8 @@ def start_worker():
                     r.xack(stream_name, group_name, message_id)
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"!!! Error processing task: {e}")
 
 if __name__ == "__main__":

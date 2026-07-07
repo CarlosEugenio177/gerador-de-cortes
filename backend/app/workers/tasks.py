@@ -6,9 +6,10 @@ from redis import Redis
 from app.services.transcription import TranscriptionService
 # from app.services.storage import get_storage_service (if needed in future)
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from tenacity import retry, wait_exponential, stop_after_attempt
+from app.utils.logger import get_structured_logger
+
+logger = get_structured_logger("tasks")
 
 def is_cancelled(project_id: int) -> bool:
     """Check if project was cancelled via Redis flag."""
@@ -36,44 +37,82 @@ def _publish_status(project_id: int, status: str, message: str, progress: int = 
     except Exception as e:
         logger.error(f"Failed to publish status to Redis: {e}")
 
+async def _generate_thumbnail(video_path: str, output_path: str):
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-i", video_path, "-ss", "00:00:01.000", "-vframes", "1", output_path,
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+        )
+        await proc.wait()
+    except Exception as e:
+        logger.warning(f"Failed to generate thumbnail: {e}")
+
+async def _generate_waveform(audio_path: str, output_path: str):
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-i", audio_path, "-filter_complex", "showwavespic=s=640x120", "-frames:v", "1", output_path,
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+        )
+        await proc.wait()
+    except Exception as e:
+        logger.warning(f"Failed to generate waveform: {e}")
+
 async def run_process_video(project_id: int, file_path: str, prompt: str, pre_extracted_audio: str = None, proxy_path: str = None) -> None:
     """Async task executor implementing the DB-less AI pipeline."""
-    logger.info(f"Starting processing pipeline for project {project_id}")
+    logger.info("Starting processing pipeline", extra={"project_id": project_id})
     
     redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
     r = Redis.from_url(redis_url)
 
-    _publish_status(project_id, "transcribing", "Extracting audio from video...", 10)
+    _publish_status(project_id, "TRANSCRIBING", "Preparando mídias (Áudio, Thumbnails)...", 10)
 
     transcript_file = f"{file_path}.transcript.json"
     audio_path = None
-    
+    should_cleanup_audio = False
+
     try:
         transcription_service = TranscriptionService(model_size="base", device="cuda")
 
         if is_cancelled(project_id):
-            logger.info(f"Project {project_id} cancelled before transcription.")
+            logger.info("Project cancelled before transcription.", extra={"project_id": project_id})
             return
 
+        # Wrapper functions to apply tenacity since we don't want to modify transcription.py right now
+        @retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
+        def _safe_extract(path):
+            return transcription_service.extract_audio(path)
+
+        @retry(wait=wait_exponential(multiplier=1, min=4, max=10), stop=stop_after_attempt(3))
+        def _safe_transcribe(path):
+            return transcription_service.transcribe_audio(path)
+
+        if pre_extracted_audio and os.path.exists(pre_extracted_audio):
+            logger.info("Using pre-extracted audio", extra={"project_id": project_id, "stage": "audio_extract"})
+            audio_path = pre_extracted_audio
+            should_cleanup_audio = False
+        else:
+            logger.info("Extracting audio from video...", extra={"project_id": project_id, "stage": "audio_extract"})
+            audio_path = await asyncio.to_thread(_safe_extract, file_path)
+            should_cleanup_audio = True
+
+        # Dispatch parallel tasks for media assets
+        thumb_path = f"{file_path}.thumb.jpg"
+        wave_path = f"{file_path}.waveform.png"
+        logger.info("Dispatching parallel thumbnail and waveform generation", extra={"project_id": project_id})
+        await asyncio.gather(
+            _generate_thumbnail(file_path, thumb_path),
+            _generate_waveform(audio_path, wave_path)
+        )
+
         if os.path.exists(transcript_file):
-            logger.info("Found existing transcription. Skipping Faster-Whisper!")
-            _publish_status(project_id, "transcribing", "Carregando transcrição existente (Rápido)...", 20)
+            logger.info("Found existing transcription. Skipping Faster-Whisper!", extra={"project_id": project_id})
+            _publish_status(project_id, "TRANSCRIBING", "Carregando transcrição existente (Rápido)...", 20)
             with open(transcript_file, "r", encoding="utf-8") as f:
                 segments = json.load(f)
         else:
-            if pre_extracted_audio and os.path.exists(pre_extracted_audio):
-                logger.info(f"Using pre-extracted audio: {pre_extracted_audio}")
-                audio_path = pre_extracted_audio
-                # Do NOT delete this file in finally block since Go might need it or manage it
-                should_cleanup_audio = False
-            else:
-                logger.info(f"Extracting audio from: {file_path}")
-                audio_path = transcription_service.extract_audio(file_path)
-                should_cleanup_audio = True
-
-            logger.info("Generating transcription with Faster-Whisper...")
-            _publish_status(project_id, "transcribing", "Transcribing audio (this may take a while)...", 20)
-            segments = transcription_service.transcribe_audio(audio_path)
+            logger.info("Generating transcription with Faster-Whisper...", extra={"project_id": project_id, "stage": "whisper"})
+            _publish_status(project_id, "TRANSCRIBING", "Transcrevendo áudio (this may take a while)...", 20)
+            segments = await asyncio.to_thread(_safe_transcribe, audio_path)
 
             if not segments:
                 raise ValueError("Transcription returned no segments. Audio might be empty.")
@@ -81,6 +120,8 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
             # Cache the transcription
             with open(transcript_file, "w", encoding="utf-8") as f:
                 json.dump(segments, f, ensure_ascii=False)
+                
+        _publish_status(project_id, "TRANSCRIBED", "Transcrição finalizada.", 30)
                 
         # Force garbage collection of VRAM before starting LLM
         transcription_service.unload_model()
@@ -99,9 +140,14 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
         llm_service = LLMService(model="llama3")
         scoring_service = ClipScoringService(llm_service=llm_service)
 
-        logger.info(f"Parsing User Command with LLM: '{prompt}'...")
-        _publish_status(project_id, "analyzing", "A IA está interpretando o seu pedido de edição...", 40)
-        command_config = llm_service.parse_user_command(prompt)
+        logger.info(f"Parsing User Command with LLM: '{prompt}'...", extra={"project_id": project_id, "stage": "llm_parsing"})
+        _publish_status(project_id, "ANALYZING", "A IA está interpretando o seu pedido de edição...", 40)
+        
+        @retry(wait=wait_exponential(multiplier=2, min=5, max=20), stop=stop_after_attempt(5))
+        def _safe_parse_command(p):
+            return llm_service.parse_user_command(p)
+            
+        command_config = _safe_parse_command(prompt)
         
         # Override with explicit prompt instructions to prevent LLM hallucinations
         import re
@@ -172,14 +218,13 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
                     # Progress from 50% to 80%
                     if total > 0:
                         percent = 50 + int((current / total) * 30)
-                        _publish_status(project_id, "analyzing", f"Analisando visualmente bloco {current+1} de {total}...", percent)
+                        _publish_status(project_id, "ANALYZING", f"Analisando visualmente bloco {current+1} de {total}...", percent)
 
-                scored_blocks = scoring_service.score_blocks(
-                    blocks, 
-                    topic_focus=command_config.topic_focus, 
-                    video_path=video_for_analysis,
-                    progress_callback=progress_cb
-                )
+                @retry(wait=wait_exponential(multiplier=2, min=5, max=20), stop=stop_after_attempt(5))
+                def _safe_score_blocks(b, tf, vp, pcb):
+                    return scoring_service.score_blocks(b, topic_focus=tf, video_path=vp, progress_callback=pcb)
+
+                scored_blocks = _safe_score_blocks(blocks, command_config.topic_focus, video_for_analysis, progress_cb)
                 
                 logger.info("Merging and selecting best clips...")
                 
@@ -209,9 +254,11 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
             # Save to cache
             with open(moments_file, "w", encoding="utf-8") as f:
                 json.dump(viral_moments, f, ensure_ascii=False)
+                
+        _publish_status(project_id, "ANALYZED", "Análise de momentos concluída.", 75)
 
-        logger.info(f"Queuing {len(viral_moments)} video cuts for Render Engine...")
-        _publish_status(project_id, "analyzing", f"Criando plano de edição para {len(viral_moments)} cortes...", 80)
+        logger.info(f"Queuing {len(viral_moments)} video cuts for Render Engine...", extra={"project_id": project_id, "stage": "timeline_building"})
+        _publish_status(project_id, "BUILDING_TIMELINE", f"Criando plano de edição para {len(viral_moments)} cortes...", 80)
         
         subtitle_service = SubtitleService()
         total_clips = len(viral_moments)
@@ -264,7 +311,8 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
                     current_end = w["end"]
                 keep_segments.append([current_start, current_end])
 
-            clip_title = moment.get("title", f"Clip {i+1}")
+            base_title = moment.get("title", f"Clip")
+            clip_title = f"{base_title} (Corte {i+1})"
             clip_desc = moment.get("description", f"Corte gerado por IA focado em {command_config.topic_focus}")
 
             operations = []
@@ -321,18 +369,19 @@ async def run_process_video(project_id: int, file_path: str, prompt: str, pre_ex
             "clips": clips_metadata
         })
         r.xadd("stream:events:clips_ready", {"payload": clips_payload})
+        _publish_status(project_id, "TIMELINE_READY", "Linha do tempo e operações construídas.", 85)
 
-        # Envia os jobs para o render engine
+        # Envia os jobs para o render engine usando Streams ao invés de Lists (BLPop -> XReadGroup)
         for plan in render_jobs:
-            r.rpush("queue:render", json.dumps(plan))
+            r.xadd("stream:render", {"payload": json.dumps(plan)})
 
-        logger.info(f"Project {project_id} successfully processed and queued for rendering!")
-        _publish_status(project_id, "rendering", "Plano de edição enviado para renderização na GPU...", 85)
+        logger.info("Project successfully processed and queued for rendering!", extra={"project_id": project_id, "stage": "queued_render"})
+        _publish_status(project_id, "QUEUED_RENDER", "Plano de edição enviado para fila de renderização GPU...", 90)
 
     except Exception as e:
-        logger.exception(f"Error processing project {project_id}: {str(e)}")
+        logger.exception("Error processing project", extra={"project_id": project_id, "stage": "failed", "error_details": str(e)})
         # Publish to events:failed
-        payload = json.dumps({"project_id": project_id, "status": "failed", "error": str(e)})
+        payload = json.dumps({"project_id": project_id, "status": "FAILED", "error": str(e)})
         Redis.from_url(redis_url).xadd("stream:events:failed", {"payload": payload})
     finally:
         # Cleanup temporary audio file

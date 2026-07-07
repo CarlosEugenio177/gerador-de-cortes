@@ -97,10 +97,10 @@ func PreprocessVideoAsync(projectID uint, originalPath string, prompt string) {
 			websocket_pkg.DefaultHub.Broadcast(fmt.Sprintf("%d", projectID), string(progressMsg))
 		}
 
-		// 2. Create Proxy (360p, fast hardware encode)
+		// 2. Create Proxy (720p, fast hardware encode)
 		log.Printf("Creating proxy video for project %d on GPU (NVENC)...", projectID)
-		// ffmpeg -i original.mp4 -vf scale=-2:360 -c:v h264_nvenc -preset p4 -cq 28 -c:a aac -b:a 128k proxy.mp4
-		proxyCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", originalPath, "-vf", "scale=-2:360", "-c:v", "h264_nvenc", "-preset", "p4", "-cq", "28", "-c:a", "aac", "-b:a", "128k", proxyPath)
+		// ffmpeg -i original.mp4 -vf scale=-2:720 -c:v h264_nvenc -preset p4 -cq 28 -c:a aac -b:a 128k proxy.mp4
+		proxyCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", originalPath, "-vf", "scale=-2:720", "-c:v", "h264_nvenc", "-preset", "p4", "-cq", "28", "-c:a", "aac", "-b:a", "128k", proxyPath)
 		if err := proxyCmd.Run(); err != nil {
 			if ctx.Err() != nil {
 				log.Printf("Proxy creation cancelled for project %d", projectID)

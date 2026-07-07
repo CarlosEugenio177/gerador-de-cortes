@@ -257,3 +257,18 @@ Aplicação das Operações via Timeline Renderer (FFmpeg filter_complex)
 * **Desacoplamento do Pipeline de IA:** O fluxo de legenda agora é separado em duas etapas manuais controláveis pelo usuário via Go Gateway e Celery: `POST /transcribe` (gera o texto base) e `POST /render-custom` (aplica estilos e renderiza o `.ass` hardcoded).
 * **Eventos WebSockets Bi-Direcionais:** O Gateway Go e Frontend foram atualizados para trafegar ativamente a string completa da transcrição pelo socket quando o Python emite `events:transcript_ready`, preenchendo o Zustand instantaneamente.
 * **Refatoração do EditorLayout:** O arquivo principal do editor de estúdio dividiu seu Layout Central em "Modo Cortes" (visualizar os 3 highlights de IA extraídos) e "Modo Edição" (Editor UI Pro com três painéis: ferramentas, player central, corretor semântico de palavras).
+
+### 2026-07-07
+#### Adicionado / Modificado
+* **Implementação Massiva - FASE 1 (Estabilidade e Escalabilidade):**
+* **Máquina de Estados Absoluta:** Go Gateway (`project.go`) atualizado para rastrear granularmente `QUEUED_AI`, `TRANSCRIBING`, `ANALYZING`, `BUILDING_TIMELINE`, `QUEUED_RENDER`, etc. O Go é a única fonte de verdade de estado.
+* **Sistema de Auditoria Global (AuditLog):** Criada e migrada tabela `audit_logs` no PostgreSQL. `events.go` modificado para gravar logs imutáveis detalhando WorkerID, Stage, Status, Duração e Timestamp para toda transição.
+* **Recuperação Automática e Idempotência (Python):** `tasks.py` refatorado para ler checkpoints de disco (`transcript.json`, `moments.json`) antes de realizar o trabalho, evitando desperdício e perdas num reinício.
+* **Retentativas Inteligentes:** Introduzido `tenacity` com decorators de exponential backoff nas inferências do Whisper e LLM.
+* **Logs Estruturados:** Python AI Engine padronizado com `utils/logger.py` forçando output no formato JSON (`{"stage": "...", "duration_ms": ...}`) para análise semântica em logs.
+* **Refatoração de Recovery do Render Engine (Go):** Migrada a comunicação de redis `Lists (BLPop)` para `Streams (XReadGroup)` permitindo `XAck` atômico. Containers do Render que sofrerem hard kill não perdem a task, resgatando automaticamente da PEL (Pending Entries List).
+* **Fase 2 (Proxy e Fingerprint):** Implementado cálculo de SHA256 em Go para garantir deduplicação criptograficamente segura na entrada. Adicionado paralelismo usando `asyncio.gather` no AI Engine para gerar assets visuais (waveforms, thumbnails) simultaneamente enquanto o processador GPU extrai o áudio principal, eliminando tempo ocioso.
+* **Fase 3 (GPU HWAccel e Fallbacks):** `backend-render` forçado a injetar flag nativa `-hwaccel cuda` antes das streams de input para decodificar vídeos via GPU, livrando a CPU completamente. Também injetado pipeline defensivo que aplica um Fallback de transcode para CPU (`libx264`) de modo automático em caso de esgotamento repentino de VRAM da NVENC, impossibilitando que a API devolva erro para o cliente.
+* **Fase 4 (Escalabilidade Horizontal Completa):** Os três motores do sistema (Gateway Go, Python Celery Worker, Render Engine) foram adaptados para ler Redis Streams utilizando `Consumer Names` dinâmicos baseados no Hostname (`os.Hostname()`). Agora, é possível rodar `docker-compose up --scale render-worker=5` ou escalar via Kubernetes sem nenhum collision de ID nas listagens de pendências (PEL) do Redis.
+
+

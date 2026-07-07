@@ -45,24 +45,53 @@ func main() {
 		Addr: redisAddr,
 	})
 
-	log.Println("ClipForge Render Engine started. Listening on 'queue:render'...")
+	log.Println("ClipForge Render Engine started. Listening on 'stream:render'...")
+
+	streamName := "stream:render"
+	groupName := "render_engine_group"
+	hostname, _ := os.Hostname()
+	consumerName := fmt.Sprintf("render_worker_%s", hostname)
+
+	err := rdb.XGroupCreateMkStream(ctx, streamName, groupName, "0").Err()
+	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
+		log.Printf("Notice on group creation %s: %v", streamName, err)
+	}
 
 	for {
-		result, err := rdb.BLPop(ctx, 0, "queue:render").Result()
-		if err != nil {
-			log.Printf("Error pulling from Redis: %v", err)
+		streams, err := rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
+			Group:    groupName,
+			Consumer: consumerName,
+			Streams:  []string{streamName, ">"},
+			Count:    1,
+			Block:    5 * time.Second,
+		}).Result()
+
+		if err != nil && err != redis.Nil {
+			log.Printf("Error reading from stream: %v", err)
 			time.Sleep(2 * time.Second)
 			continue
 		}
 
-		payload := result[1]
-		var plan EditPlan
-		if err := json.Unmarshal([]byte(payload), &plan); err != nil {
-			log.Printf("Failed to unmarshal EditPlan: %v", err)
+		if len(streams) == 0 {
 			continue
 		}
 
-		log.Printf("Received render task for Project %d", plan.ProjectID)
+		for _, msg := range streams[0].Messages {
+			payloadStr, ok := msg.Values["payload"].(string)
+			if !ok {
+				log.Printf("Failed to get payload from message %v", msg.ID)
+				rdb.XAck(ctx, streamName, groupName, msg.ID)
+				continue
+			}
+
+			var plan EditPlan
+			if err := json.Unmarshal([]byte(payloadStr), &plan); err != nil {
+				log.Printf("Failed to unmarshal EditPlan: %v", err)
+				rdb.XAck(ctx, streamName, groupName, msg.ID)
+				continue
+			}
+
+			log.Printf("Received render task for Project %d", plan.ProjectID)
 		publishProgress(rdb, plan.ProjectID, "rendering", "Iniciando renderização da inteligência artificial...", 85)
 
 		// Parse operations to build FFmpeg command
@@ -170,6 +199,7 @@ func main() {
 
 		ffmpegArgs := []string{
 			"-y",
+			"-hwaccel", "cuda",
 			"-ss", fmt.Sprintf("%f", startTime),
 			"-i", plan.OriginalFile,
 			"-t", fmt.Sprintf("%f", duration),
@@ -182,8 +212,19 @@ func main() {
 			ffmpegArgs = append(ffmpegArgs, "-af", afFilters)
 		}
 
-		ffmpegArgs = append(ffmpegArgs, 
+		var ffmpegArgsNVENC []string
+		ffmpegArgsNVENC = append(ffmpegArgsNVENC, ffmpegArgs...)
+		ffmpegArgsNVENC = append(ffmpegArgsNVENC,
 			"-c:v", "h264_nvenc",
+			"-preset", "fast",
+			"-c:a", "aac",
+			outputPath,
+		)
+		
+		var ffmpegArgsFallback []string
+		ffmpegArgsFallback = append(ffmpegArgsFallback, ffmpegArgs...)
+		ffmpegArgsFallback = append(ffmpegArgsFallback,
+			"-c:v", "libx264",
 			"-preset", "fast",
 			"-c:a", "aac",
 			outputPath,
@@ -197,24 +238,37 @@ func main() {
 			continue
 		}
 
-		cmd := exec.Command("ffmpeg", ffmpegArgs...)
-		
+		cmd := exec.Command("ffmpeg", ffmpegArgsNVENC...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		
 		log.Printf("Running FFmpeg (GPU NVENC): %s", cmd.String())
 		if err := cmd.Run(); err != nil {
-			log.Printf("FFmpeg failed: %v", err)
-			publishFailed(rdb, plan.ProjectID, "Falha na renderização de vídeo pelo FFmpeg.")
-			rdb.Del(ctx, lockKey) // Remove lock if failed so it can be retried
-			continue
+			log.Printf("FFmpeg NVENC failed: %v. Retrying with CPU Fallback (libx264)...", err)
+			
+			// Fallback execution
+			cmdFallback := exec.Command("ffmpeg", ffmpegArgsFallback...)
+			cmdFallback.Stdout = os.Stdout
+			cmdFallback.Stderr = os.Stderr
+			log.Printf("Running FFmpeg Fallback (CPU): %s", cmdFallback.String())
+			
+			if errFallback := cmdFallback.Run(); errFallback != nil {
+				log.Printf("FFmpeg Fallback failed: %v", errFallback)
+				publishFailed(rdb, plan.ProjectID, "Falha na renderização de vídeo pelo FFmpeg (Hardware e Software limitados).")
+				rdb.Del(ctx, lockKey) // Remove lock if failed so it can be retried
+				continue
+			}
 		}
 
 		log.Printf("Project %d - Clip '%s' completed successfully.", plan.ProjectID, clipTitle)
 		rdb.Del(ctx, lockKey)
 		
 		publishClipCompleted(rdb, plan.ProjectID, []string{outputPath}, clipTitle)
-	}
+		
+		// Confirm completion and remove from pending queue
+		rdb.XAck(ctx, streamName, groupName, msg.ID)
+		} // end for messages
+	} // end for infinite loop
 }
 
 func publishProgress(rdb *redis.Client, projectID uint, status, message string, progress int) {
