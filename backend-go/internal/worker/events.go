@@ -154,7 +154,7 @@ func handleClipCompleted(payload EventPayload, rawMsg string) {
 		file := payload.Files[0]
 		clipTitle := payload.Clips[0].Title
 		repository.DB.Model(&models.Clip{}).
-			Where("project_id = ? AND title = ?", projectID, clipTitle).
+			Where("project_id = ? AND title = ? AND (file_path IS NULL OR file_path = '')", projectID, clipTitle).
 			Update("file_path", file)
 	}
 
