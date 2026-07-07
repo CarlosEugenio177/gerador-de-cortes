@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -99,9 +100,9 @@ func main() {
 		}
 
 		duration := endTime - startTime
-		// Use um nome único com base no título do clip
-		safeTitle := clipTitle
-		outputPath := filepath.Join("uploads", fmt.Sprintf("project_%d_%s_final.mp4", plan.ProjectID, safeTitle))
+		// Use a unique name based on title AND timestamps to prevent collision if titles are identical
+		safeTitle := strings.ReplaceAll(clipTitle, ":", "x")
+		outputPath := filepath.Join("uploads", fmt.Sprintf("project_%d_t%.0f_%.0f_%s_final.mp4", plan.ProjectID, startTime, endTime, safeTitle))
 		
 		// 1. Determine base crop from video_format
 		var cropFilter string
