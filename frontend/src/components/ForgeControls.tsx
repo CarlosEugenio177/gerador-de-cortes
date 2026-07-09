@@ -53,9 +53,11 @@ const i18n = {
 export function ForgeControls() {
   const { 
     isThinking, setThinking, videoFile, setProject, updateProgress, processingStatus,
-    forgeAspectRatios, forgeSubtitleStyle, forgeMode, forgeClipQuantity, forgeDurationMins, forgeLanguage, setForgeSettings,
+    forgeAspectRatios, forgeSubtitleStyle, forgeClipQuantity, forgeLanguage, setForgeSettings,
     projectName, setProjectName, projectId, reprocessProject, cancelProcessing, clips
   } = useAppStore();
+
+  const [prompt, setPrompt] = useState("");
 
   const t = i18n[forgeLanguage];
   const isProcessing = isThinking || (processingStatus !== 'IDLE' && processingStatus !== 'COMPLETED' && processingStatus !== 'FAILED');
@@ -72,12 +74,9 @@ export function ForgeControls() {
     setThinking(true);
     
     // Convert UI state into a prompt instruction for the LLM
-    let promptInstruction = `video_formats: ${forgeAspectRatios.join(",")}, subtitle_style: ${forgeSubtitleStyle}, mode: ${forgeMode}`;
-    if (forgeMode === 'FULL EDIT') {
-      promptInstruction += `\n\nFULL_VIDEO_EDIT`;
-    } else if (forgeMode !== 'MANUAL CUT') {
-      promptInstruction += `\n\nduration_request: ${forgeDurationMins} minutes\nclip_quantity: ${forgeClipQuantity}`;
-    }
+    let promptInstruction = prompt ? `User Instruction: ${prompt}\n\n` : "";
+    promptInstruction += `video_formats: ${forgeAspectRatios.join(",")}, subtitle_style: ${forgeSubtitleStyle}`;
+    promptInstruction += `\nclip_quantity: ${forgeClipQuantity}`;
 
     if (projectId) {
       // We are reprocessing an existing project
@@ -233,63 +232,21 @@ export function ForgeControls() {
           </div>
         </div>
 
-        {/* Forge Mode */}
+        {/* Prompt Instruction */}
         <div className="space-y-3">
           <label className="flex items-center text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
             <Settings2 className="w-3 h-3 mr-2 text-zinc-500" />
-            {t.processingMode}
+            O que você deseja extrair?
           </label>
-          <div className="grid grid-cols-1 gap-2">
-            <button
-              disabled={isProcessing}
-              onClick={() => setForgeSettings({ forgeMode: 'AUTO FORGE' })}
-              className={`flex items-center p-3 rounded border transition-all ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''} ${forgeMode === 'AUTO FORGE' ? 'bg-orange-500/10 border-orange-500/50 text-orange-500' : 'bg-black border-zinc-800 text-zinc-400 hover:border-zinc-700'}`}
-            >
-              <Flame className="w-4 h-4 mr-3" />
-              <div className="text-left">
-                <div className="text-xs font-bold uppercase tracking-wider">{t.autoForge}</div>
-                <div className="text-[9px] text-zinc-500 mt-0.5">{t.autoForgeDesc}</div>
-              </div>
-            </button>
-            <button
-              disabled={isProcessing}
-              onClick={() => setForgeSettings({ forgeMode: 'HYBRID' })}
-              className={`flex items-center p-3 rounded border transition-all ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''} ${forgeMode === 'HYBRID' ? 'bg-zinc-800/50 border-zinc-500/50 text-white' : 'bg-black border-zinc-800 text-zinc-400 hover:border-zinc-700'}`}
-            >
-              <Scissors className="w-4 h-4 mr-3" />
-              <div className="text-left">
-                <div className="text-xs font-bold uppercase tracking-wider">{t.hybridEdit}</div>
-                <div className="text-[9px] text-zinc-500 mt-0.5">{t.hybridEditDesc}</div>
-              </div>
-            </button>
-            <button
-              disabled={isProcessing}
-              onClick={() => setForgeSettings({ forgeMode: 'MANUAL CUT' })}
-              className={`flex items-center p-3 rounded border transition-all ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''} ${forgeMode === 'MANUAL CUT' ? 'bg-red-900/20 border-red-500/50 text-red-500' : 'bg-black border-zinc-800 text-zinc-400 hover:border-zinc-700'}`}
-            >
-              <ShieldAlert className="w-4 h-4 mr-3" />
-              <div className="text-left">
-                <div className="text-xs font-bold uppercase tracking-wider">{t.manualCut}</div>
-                <div className="text-[9px] text-zinc-500 mt-0.5">{t.manualCutDesc}</div>
-              </div>
-            </button>
-            <button
-              disabled={isProcessing}
-              onClick={() => setForgeSettings({ forgeMode: 'FULL EDIT' })}
-              className={`flex items-center p-3 rounded border transition-all ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''} ${forgeMode === 'FULL EDIT' ? 'bg-blue-900/20 border-blue-500/50 text-blue-500' : 'bg-black border-zinc-800 text-zinc-400 hover:border-zinc-700'}`}
-            >
-              <Play className="w-4 h-4 mr-3" />
-              <div className="text-left">
-                <div className="text-xs font-bold uppercase tracking-wider">{t.fullEdit}</div>
-                <div className="text-[9px] text-zinc-500 mt-0.5">{t.fullEditDesc}</div>
-              </div>
-            </button>
-          </div>
+          <textarea
+            disabled={isProcessing}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Ex: Encontre os momentos mais engraçados e retire as pausas..."
+            className={`w-full bg-black border border-zinc-800 text-zinc-100 placeholder-zinc-600 rounded-md px-4 py-3 text-sm focus:outline-none focus:border-zinc-500 transition-colors h-24 resize-none ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+          />
         </div>
 
-        {/* Sliders (Only for Auto/Hybrid) */}
-        {(forgeMode === 'AUTO FORGE' || forgeMode === 'HYBRID') && (
-          <>
             <div className="space-y-3 pt-4 border-t border-zinc-900">
               <div className="flex justify-between items-center">
                 <label className="flex items-center text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
@@ -306,25 +263,6 @@ export function ForgeControls() {
                 className={`w-full accent-orange-500 ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               />
             </div>
-
-            <div className="space-y-3 pt-4 border-t border-zinc-900">
-              <div className="flex justify-between items-center">
-                <label className="flex items-center text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                  {t.targetDuration}
-                </label>
-                <span className="text-orange-500 font-mono text-sm font-bold">{forgeDurationMins} min</span>
-              </div>
-              <input 
-                type="range" 
-                min="1" max="30" step="1" 
-                disabled={isProcessing}
-                value={forgeDurationMins}
-                onChange={(e) => setForgeSettings({ forgeDurationMins: parseInt(e.target.value) })}
-                className={`w-full accent-orange-500 ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              />
-            </div>
-          </>
-        )}
       </div>
 
       {/* Footer / Submit */}

@@ -130,37 +130,13 @@ export function MediaViewer() {
                       <div className="absolute w-24 h-24 bg-orange-500/5 blur-[20px] rounded-full pointer-events-none" />
                       
                       <div className="relative flex flex-col items-center">
-                        {/* Animated Minimal Hammer */}
                         <motion.div
-                          animate={{ 
-                            y: [0, -10, 0],
-                            rotate: [0, -15, 0]
-                          }}
-                          transition={{ 
-                            repeat: Infinity, 
-                            duration: 1, 
-                            ease: "easeInOut",
-                            times: [0, 0.5, 1]
-                          }}
-                          className="origin-bottom-right text-[#D0D0D0] relative z-20 mb-1"
+                          animate={{ opacity: [0.5, 1, 0.5], scale: [0.9, 1.1, 0.9] }}
+                          transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                          className="text-orange-500 relative z-20 mb-4"
                         >
-                          <Hammer strokeWidth={1.5} className="w-5 h-5 drop-shadow-[0_0_3px_rgba(249,115,22,0.3)]" />
+                          <Flame strokeWidth={1.5} className="w-8 h-8 drop-shadow-[0_0_8px_rgba(249,115,22,0.6)]" />
                         </motion.div>
-                        
-                        {/* Minimal Anvil */}
-                        <Anvil strokeWidth={1.5} className="w-6 h-6 text-[#D0D0D0] relative z-10" />
-
-                        {/* Minimal Sparks */}
-                        <motion.div
-                          animate={{ opacity: [0, 0.8, 0], scale: [0.5, 1, 0.5], y: [0, -8, 4], x: [0, -8, 12] }}
-                          transition={{ repeat: Infinity, duration: 1, times: [0, 0.5, 1], ease: "easeOut" }}
-                          className="absolute top-4 right-1 w-1 h-1 bg-orange-500 rounded-full blur-[1px] z-10 opacity-60"
-                        />
-                        <motion.div
-                          animate={{ opacity: [0, 0.6, 0], scale: [0.3, 0.8, 0.3], y: [0, -12, 6], x: [0, 8, 15] }}
-                          transition={{ repeat: Infinity, duration: 1, delay: 0.1, times: [0, 0.5, 1], ease: "easeOut" }}
-                          className="absolute top-3 right-0 w-0.5 h-0.5 bg-orange-400 rounded-full blur-[0.5px] z-10 opacity-50"
-                        />
                       </div>
                     </div>
 

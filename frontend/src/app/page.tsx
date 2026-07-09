@@ -116,7 +116,7 @@ export default function DashboardPage() {
             onClick={() => router.push("/forge")}
             className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold py-2 px-6 rounded transition-all duration-300 shadow-[0_0_15px_rgba(234,88,12,0.3)] flex items-center gap-2 uppercase tracking-wider text-xs"
           >
-            <Hammer className="w-4 h-4" />
+            <Flame className="w-4 h-4" />
             New Forge
           </button>
         </div>
@@ -170,11 +170,11 @@ export default function DashboardPage() {
         ) : activeTab === 'projects' ? (
           projects.length === 0 ? (
             <div className="border border-zinc-900 rounded-xl p-16 text-center flex flex-col items-center justify-center bg-gradient-to-b from-[#0a0a0a] to-[#050505] shadow-2xl relative overflow-hidden">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-orange-600/10 blur-[100px] pointer-events-none" />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-orange-600/5 blur-[100px] pointer-events-none" />
               <div className="w-16 h-16 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center mb-6 relative z-10 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
-                <Hammer className="w-7 h-7 text-zinc-500" />
+                <Flame className="w-7 h-7 text-zinc-500" />
               </div>
-              <h3 className="text-xl font-black text-zinc-200 uppercase tracking-widest z-10">The Forge is Cold</h3>
+              <h3 className="text-xl font-black text-zinc-200 uppercase tracking-widest z-10">No Forges Yet</h3>
               <p className="text-zinc-500 text-sm mt-3 max-w-sm z-10">Start your factory by igniting a new forge. The AI will do the heavy lifting.</p>
               <button 
                 onClick={() => router.push("/forge")}

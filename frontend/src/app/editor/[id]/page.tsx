@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useWebSocket } from "../../../lib/useWebSocket";
 import { useAppStore } from "../../../store/useAppStore";
-import { EditorLayout } from "../../../components/EditorLayout";
+import { ClipResultView } from "../../../components/ClipResultView";
 import { useRouter, useParams } from "next/navigation";
 
 export default function EditorPage() {
@@ -41,5 +41,5 @@ export default function EditorPage() {
 
   if (!mounted || loading) return <div className="h-screen w-screen bg-black flex items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full" /></div>;
 
-  return <EditorLayout />;
+  return <ClipResultView />;
 }
