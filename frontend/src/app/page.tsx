@@ -26,8 +26,10 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<'projects' | 'clips'>('projects');
   const [clips, setClips] = useState<Clip[]>([]);
 
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
   const fetchProjects = () => {
-    fetch("http://localhost:8000/api/v1/projects")
+    fetch(`${API_URL}/api/v1/projects`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -42,7 +44,7 @@ export default function DashboardPage() {
   };
 
   const fetchClips = () => {
-    fetch("http://localhost:8000/api/v1/clips")
+    fetch(`${API_URL}/api/v1/clips`)
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -66,7 +68,7 @@ export default function DashboardPage() {
     if (!confirm("Are you sure you want to delete this project? The clips will remain in the All Clips tab.")) return;
 
     try {
-      await fetch(`http://localhost:8000/api/v1/projects/${id}`, { method: 'DELETE' });
+      await fetch(`${API_URL}/api/v1/projects/${id}`, { method: 'DELETE' });
       fetchProjects();
       fetchClips();
     } catch (err) {
@@ -79,7 +81,7 @@ export default function DashboardPage() {
     if (!confirm("Are you sure you want to delete this clip?")) return;
 
     try {
-      await fetch(`http://localhost:8000/api/v1/clips/${id}`, { method: 'DELETE' });
+      await fetch(`${API_URL}/api/v1/clips/${id}`, { method: 'DELETE' });
       fetchClips();
       fetchProjects(); // Update project clip counts if any
     } catch (err) {
@@ -283,7 +285,7 @@ export default function DashboardPage() {
                               <div className="relative aspect-video bg-zinc-900 flex items-center justify-center">
                                 {clip.video_url ? (
                                   <video 
-                                    src={`http://localhost:8000/${clip.video_url}`} 
+                                    src={`${API_URL}/${clip.video_url.replace(/\\/g, '/')}`} 
                                     className="w-full h-full object-cover" 
                                     controls
                                     controlsList="nodownload"

@@ -117,6 +117,7 @@ func main() {
 		if !hasClip {
 			log.Printf("No clip operation found for Project %d. Skipping.", plan.ProjectID)
 			publishFailed(rdb, plan.ProjectID, "Nenhuma operação de corte (clip) encontrada no plano.")
+			rdb.XAck(ctx, streamName, groupName, msg.ID)
 			continue
 		}
 
@@ -125,6 +126,7 @@ func main() {
 		locked, err := rdb.SetNX(ctx, lockKey, "1", 1*time.Hour).Result()
 		if err != nil || !locked {
 			log.Printf("Clip '%s' for Project %d is already being rendered (lock exists on timeframe). Skipping duplicate job.", clipTitle, plan.ProjectID)
+			rdb.XAck(ctx, streamName, groupName, msg.ID)
 			continue
 		}
 
@@ -235,6 +237,7 @@ func main() {
 			log.Printf("Optimization: File %s already exists. Skipping GPU render.", outputPath)
 			rdb.Del(ctx, lockKey)
 			publishClipCompleted(rdb, plan.ProjectID, []string{outputPath}, clipTitle)
+			rdb.XAck(ctx, streamName, groupName, msg.ID)
 			continue
 		}
 
@@ -256,6 +259,7 @@ func main() {
 				log.Printf("FFmpeg Fallback failed: %v", errFallback)
 				publishFailed(rdb, plan.ProjectID, "Falha na renderização de vídeo pelo FFmpeg (Hardware e Software limitados).")
 				rdb.Del(ctx, lockKey) // Remove lock if failed so it can be retried
+				rdb.XAck(ctx, streamName, groupName, msg.ID)
 				continue
 			}
 		}

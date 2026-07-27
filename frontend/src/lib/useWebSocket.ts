@@ -9,7 +9,9 @@ export const useWebSocket = (projectId: string | null) => {
     if (!projectId) return;
 
     // Conectar ao Gateway Go (rota real)
-    const wsUrl = `ws://localhost:8000/api/v1/ws/projects/${projectId}`;
+    const wsBase = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws";
+    const wsHost = wsBase.replace(/\/ws$/, '');
+    const wsUrl = `${wsHost}/api/v1/ws/projects/${projectId}`;
     console.log(`[WebSocket] Connecting to ${wsUrl}`);
     
     wsRef.current = new WebSocket(wsUrl);
@@ -23,15 +25,14 @@ export const useWebSocket = (projectId: string | null) => {
         const data = JSON.parse(event.data);
         console.log('[WebSocket] Message received:', data);
 
-
-
         if (data.status) {
           updateProgress(data.status, data.message || '', data.progress || 0);
 
           if (data.status === 'COMPLETED') {
             // Fetch project to get clips
             try {
-              const res = await fetch(`http://localhost:8000/api/v1/projects/${projectId}`);
+              const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+              const res = await fetch(`${API_URL}/api/v1/projects/${projectId}`);
               if (res.ok) {
                 const project = await res.json();
                 if (project.clips && project.clips.length > 0) {

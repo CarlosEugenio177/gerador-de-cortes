@@ -278,3 +278,13 @@ Aplicação das Operações via Timeline Renderer (FFmpeg filter_complex)
   * Construção da Interface de Observabilidade (`/dashboard`), consumindo métricas em tempo real (`gopsutil`) diretamente do servidor Go para monitorar RAM, CPU e Redis Ping.
   * Implementada Deleção Profunda (Deep Deletion) de Projetos e Clipes no Go Gateway (`os.Remove` atrelado aos endpoints DELETE) limpando originais, audios, .ass e .json associados sem deixar órfãos físicos.
 
+### 2026-07-27
+#### Adicionado / Modificado / Otimizado
+* **Limpeza de Arquivos Obsoletos:** Removido o binário executável compilado `backend-go/api.exe` (29MB) do repositório. Removidas as pastas de migração Python (`backend/alembic.ini` e `backend/migrations/`) uma vez que o PostgreSQL é gerenciado de forma estritamente isolada e declarativa via GORM pelo Go Gateway.
+* **Refatoração dos Scripts de Teste:** Scripts de teste de desenvolvimento `test_cli.py` e `test_upload.py` atualizados para refletir a API do Go Gateway atualizada sem rotas legadas de login FastAPI.
+* **Fix de Memory Leak no Redis Stream (Render Engine):** Adicionado `rdb.XAck` em todas as rotas de encerramento do worker Go `backend-render/main.go` (jobs pulados por trava de idempotência `SetNX`, arquivos já existentes em disco e falhas), zerando o acúmulo infinito de mensagens pendentes na PEL (Pending Entries List).
+* **Otimização das Variáveis de Ambiente no Frontend:** Substituídas todas as instâncias hardcoded de `http://localhost:8000` e `ws://localhost:8000` por variáveis `process.env.NEXT_PUBLIC_API_URL` e `process.env.NEXT_PUBLIC_WS_URL` com fallback seguro.
+* **Normalização Cross-Platform de Paths:** Injetada substituição automática de barras invertidas (`\`) por barras normais (`/`) nas rotas de arquivo de vídeo e assets servidas no frontend e armazenadas nas lojas Zustand.
+* **Limpeza de Configurações no Python Engine:** Removidas referências mortas a Celery e JWT em `backend/app/core/config.py`.
+
+

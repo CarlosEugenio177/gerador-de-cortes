@@ -38,7 +38,8 @@ function ForgeContent() {
     // DO NOT fallback to projectId from store if queryProjectId is null, 
     // because that means the user wants a NEW forge, and the store's projectId is just leftover from the previous session.
     if (queryProjectId) {
-      fetch(`http://localhost:8000/api/v1/projects/${queryProjectId}`)
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      fetch(`${API_URL}/api/v1/projects/${queryProjectId}`)
         .then(res => res.json())
         .then(data => {
           if (data && data.id) {
@@ -53,7 +54,8 @@ function ForgeContent() {
             if (videoPath) {
               const filename = videoPath.split('/').pop() || videoPath.split('\\').pop();
               const fakeFile = new File([], filename);
-              setVideoFile(fakeFile, `http://localhost:8000/${videoPath}`);
+              const cleanPath = videoPath.replace(/\\/g, '/');
+              setVideoFile(fakeFile, `${API_URL}/${cleanPath}`);
             }
 
             if (data.clips && data.clips.length > 0) {

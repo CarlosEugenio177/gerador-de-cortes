@@ -2,55 +2,36 @@ import os
 import requests
 import sys
 
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = os.getenv("API_URL", "http://localhost:8000/api/v1")
 
 def main():
     if len(sys.argv) < 2:
-        print("Uso: python test_cli.py <caminho_do_video.mp4>")
+        print("Uso: python test_cli.py <caminho_do_video.mp4> [prompt]")
         sys.exit(1)
 
     video_path = sys.argv[1]
+    prompt = sys.argv[2] if len(sys.argv) > 2 else "Gere 3 cortes curtos com legendas"
+
     if not os.path.exists(video_path):
         print(f"Erro: O arquivo {video_path} não existe.")
         sys.exit(1)
 
-    # 1. Fazer Login
-    print("Fazendo login com carlo@example.com...")
-    login_data = {
-        "username": "carlo@example.com",
-        "password": "1112345"
-    }
-    # A rota de login do FastAPI pede form-data padrão OAuth2
-    response = requests.post(f"{BASE_URL}/auth/login", data=login_data)
-    
-    if response.status_code != 200:
-        print(f"Falha no login: {response.text}")
-        sys.exit(1)
-        
-    token = response.json()["access_token"]
-    print("Login bem sucedido! Token de segurança (JWT) capturado.")
-
-    # 2. Criar Projeto fazendo o Upload do Vídeo
-    print(f"\nFazendo upload do vídeo '{video_path}'...")
-    headers = {
-        "Authorization": f"Bearer {token}"
-    }
-    
+    print(f"\nFazendo upload do vídeo '{video_path}' para {BASE_URL}/projects...")
     with open(video_path, "rb") as f:
         files = {"file": (os.path.basename(video_path), f, "video/mp4")}
-        data = {"title": "Meu Primeiro Teste via CLI"}
-        
-        response = requests.post(f"{BASE_URL}/projects/", headers=headers, data=data, files=files)
-        
-    if response.status_code == 201:
+        data = {
+            "title": f"Teste CLI - {os.path.basename(video_path)}",
+            "prompt": prompt
+        }
+        response = requests.post(f"{BASE_URL}/projects", data=data, files=files)
+
+    if response.status_code in (200, 201):
         project = response.json()
-        print("\n✅ Sucesso! Projeto criado e enviado para a fila do Celery Worker.")
-        print(f"ID do Projeto: {project['id']}")
-        print(f"Status: {project['status']}")
-        print("\nPara ver o status atualizado depois, use o comando:")
-        print(f"curl -H \"Authorization: Bearer {token}\" {BASE_URL}/projects/{project['id']}")
+        print("\n✅ Sucesso! Projeto criado e enviado para o Go Gateway.")
+        print(f"ID do Projeto: {project.get('id')}")
+        print(f"Status: {project.get('status')}")
     else:
-        print(f"Falha no upload: {response.text}")
+        print(f"Falha no upload ({response.status_code}): {response.text}")
 
 if __name__ == "__main__":
     main()

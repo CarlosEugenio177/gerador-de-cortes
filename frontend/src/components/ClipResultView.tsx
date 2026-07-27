@@ -9,11 +9,14 @@ export function ClipResultView() {
   const { clips, selectedClip, setSelectedClip, projectId, projectName } = useAppStore();
   const [downloadedClips, setDownloadedClips] = useState<Record<number, boolean>>({});
 
-  const currentVideoSrc = selectedClip ? `http://localhost:8000/${selectedClip.video_url.replace(/\\/g, '/')}` : undefined;
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+  const currentVideoSrc = selectedClip ? `${API_URL}/${selectedClip.video_url.replace(/\\/g, '/')}` : undefined;
 
   const handleDownload = (clipId: number, url: string, title: string) => {
     const link = document.createElement("a");
-    link.href = `http://localhost:8000/${url}`;
+    const cleanUrl = url.replace(/\\/g, '/');
+    link.href = `${API_URL}/${cleanUrl}`;
     link.download = `clipforge_${title.replace(/\s+/g, "_")}.mp4`;
     document.body.appendChild(link);
     link.click();
