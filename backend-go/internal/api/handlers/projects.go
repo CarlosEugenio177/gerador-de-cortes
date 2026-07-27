@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 	"clipforge-gateway/internal/models"
 	"clipforge-gateway/internal/repository"
@@ -28,6 +29,18 @@ func CreateProject(c *fiber.Ctx) error {
 
 	title := c.FormValue("title", "Untitled Project")
 	prompt := c.FormValue("prompt", "")
+
+	// Validate allowed video extensions
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	allowedExts := map[string]bool{
+		".mp4": true, ".mov": true, ".mkv": true, ".avi": true,
+		".webm": true, ".flv": true, ".wmv": true, ".m4v": true,
+	}
+	if !allowedExts[ext] {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Formato de arquivo não suportado. Por favor envie um vídeo (.mp4, .mov, .mkv, .avi, .webm).",
+		})
+	}
 
 	// Save file locally (in production this should go to S3/Cloud Storage)
 	uploadDir := "./uploads"
