@@ -1,26 +1,23 @@
-fastapi==0.111.0
-uvicorn[standard]==0.30.1
-pydantic==2.7.4
-pydantic-settings==2.3.3
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.1
+pydantic>=2.10.0
+pydantic-settings>=2.7.0
 
-redis==5.0.6
-celery==5.4.0
-passlib[bcrypt]==1.7.4
-bcrypt==4.1.3
-python-jose[cryptography]==3.3.0
-python-multipart==0.0.9
-pytest==8.2.2
-pytest-asyncio==0.23.7
-httpx==0.27.0
-requests==2.32.3
-python-dotenv==1.0.1
+redis>=5.0.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.1.0
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.9
+pytest>=8.0.0
+httpx>=0.27.0
+requests>=2.32.0
+python-dotenv>=1.0.0
+tenacity>=8.3.0
 
-# AI & Video Processing
-faster-whisper==1.0.3
-opencv-python-headless==4.10.0.84
-ollama==0.3.0
-nvidia-cublas-cu12==12.1.3.1
-nvidia-cudnn-cu12==8.9.2.26
-pytest-playwright
-tenacity==8.3.0
-boto3==1.34.135
+# Video Download & Processing
+yt-dlp>=2024.5.27
+ffmpeg-python>=0.2.0
+
+# Cloud AI APIs
+openai>=1.30.0
+google-genai>=0.1.1
