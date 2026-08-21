@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -324,13 +325,15 @@ func (s *ViralAnalyzerService) generateSmartFallbackClips(transcription *Transcr
 	}
 
 	var clips []ViralClip
-	step := totalDur / float64(quantity+1)
-
 	titles := []string{
 		"🔥 O MOMENTO MAIS INSANO!",
 		"⚡ REVELAÇÃO INACREDITÁVEL",
 		"💡 A SACADA QUE MUDA TUDO",
 		"😂 A REAÇÃO MAIS ENGRAÇADA",
+		"🚀 O SEGREDO DO SUCESSO",
+		"💥 TRANSFORMAÇÃO RADICAL",
+		"🎯 A ESTRATÉGIA PERFEITA",
+		"🧠 INSIGHT PODEROSO",
 	}
 
 	hooks := []string{
@@ -338,26 +341,37 @@ func (s *ViralAnalyzerService) generateSmartFallbackClips(transcription *Transcr
 		"Clímax de alta energia e tensão narrativa ideal para retenção no Reels/TikTok.",
 		"Insight transformador com conclusão impactante para gerar compartilhamentos.",
 		"Momento de humor inesperado com alto potencial de viralização.",
+		"Explicação reveladora que gera alta taxa de salvamentos.",
+		"Reviravolta impactante que mantém o espectador até o final.",
+		"Dica prática de alto valor com aplicação imediata.",
+		"Reflexão profunda que engaja a audiência nos comentários.",
 	}
+
+	sliceDuration := math.Max(20.0, math.Min(45.0, totalDur/float64(quantity+1)))
+	step := (totalDur - sliceDuration) / math.Max(1.0, float64(quantity))
 
 	for i := 0; i < quantity; i++ {
 		start := float64(i) * step
 		if start < 0 {
 			start = 0
 		}
-		end := start + 35.0
+		end := start + sliceDuration
 		if end > totalDur {
 			end = totalDur
 		}
-		if end <= start {
-			end = start + 15.0
+		if end <= start+10.0 {
+			end = math.Min(totalDur, start+25.0)
 		}
 
-		tIdx := i % len(titles)
+		title := titles[i%len(titles)]
+		if i >= len(titles) {
+			title = fmt.Sprintf("%s #%d", titles[i%len(titles)], i+1)
+		}
+
 		clips = append(clips, ViralClip{
 			ID:                i + 1,
-			Title:             titles[tIdx],
-			HookSummary:       hooks[tIdx],
+			Title:             title,
+			HookSummary:       hooks[i%len(hooks)],
 			StartTime:         float64(int(start*10)) / 10,
 			EndTime:           float64(int(end*10)) / 10,
 			ViralScore:        92 + (i % 7),

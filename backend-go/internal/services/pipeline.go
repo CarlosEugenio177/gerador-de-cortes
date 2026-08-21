@@ -180,6 +180,9 @@ func (p *PipelineService) executePipeline(ctx context.Context, projectID uint, v
 
 	log.Printf("[Pipeline] Project %d found %d viral clips", projectID, len(viralClips))
 
+	// Clear any old/stale clips for this project
+	repository.DB.Where("project_id = ?", projectID).Delete(&models.Clip{})
+
 	// Pre-create Clip records in DB
 	var project models.Project
 	repository.DB.First(&project, projectID)

@@ -144,39 +144,29 @@ func handleClipsReady(payload EventPayload, rawMsg string) {
 	projectID := getProjectIDUint(payload.ProjectID)
 	
 	repository.DB.Model(&models.Project{}).Where("id = ?", projectID).Update("status", models.StatusQueuedRender)
-	insertAuditLog(projectID, string(models.StatusQueuedRender), "Clips planeados. Aguardando render engine.")
-
-	var project models.Project
-	repository.DB.First(&project, projectID)
-
-	for _, c := range payload.Clips {
-		pid := projectID
-		clip := models.Clip{
-			ProjectID:   &pid,
-			ProjectName: project.Title,
-			Title:       c.Title,
-			Description: c.Description,
-			Score:       c.Score,
-			StartTime:   c.StartTime,
-			EndTime:     c.EndTime,
-			VideoURL:    "", // Will be updated when rendered
-		}
-		repository.DB.Create(&clip)
-	}
+	insertAuditLog(projectID, string(models.StatusQueuedRender), "Clips planejados. Aguardando render engine.")
 }
 
 func handleClipCompleted(payload EventPayload, rawMsg string) {
 	log.Printf("[events:clip_completed] Project %v clip rendered.", payload.ProjectID)
 	projectID := getProjectIDUint(payload.ProjectID)
 
-	// Update the specific clip with its output path
+	// Update the specific clip with its output path using exact start_time
 	if len(payload.Files) > 0 && len(payload.Clips) > 0 {
 		file := payload.Files[0]
 		cleanURL := fmt.Sprintf("/uploads/clips/%s", filepath.Base(file))
-		clipTitle := payload.Clips[0].Title
-		repository.DB.Model(&models.Clip{}).
-			Where("project_id = ? AND title = ? AND (file_path IS NULL OR file_path = '')", projectID, clipTitle).
+		c := payload.Clips[0]
+
+		res := repository.DB.Model(&models.Clip{}).
+			Where("project_id = ? AND start_time = ?", projectID, c.StartTime).
 			Update("file_path", cleanURL)
+
+		if res.RowsAffected == 0 {
+			repository.DB.Model(&models.Clip{}).
+				Where("project_id = ? AND (file_path IS NULL OR file_path = '')", projectID).
+				Limit(1).
+				Update("file_path", cleanURL)
+		}
 	}
 
 	// Check if all clips for this project have a video URL
