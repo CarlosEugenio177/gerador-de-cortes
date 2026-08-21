@@ -26,7 +26,7 @@ interface AppState {
   messages: ChatMessage[];
   isThinking: boolean;
   
-  processingStatus: 'IDLE' | 'UPLOADING' | 'PREPROCESSING' | 'TRANSCRIBING' | 'ANALYZING' | 'RENDERING' | 'EXPORTING' | 'COMPLETED' | 'FAILED';
+  processingStatus: 'IDLE' | 'UPLOADING' | 'DOWNLOADING' | 'PREPROCESSING' | 'TRANSCRIBING' | 'ANALYZING' | 'RENDERING' | 'EXPORTING' | 'COMPLETED' | 'FAILED';
   statusMessage: string;
   progress: number;
   showOssPopup: boolean;
@@ -137,12 +137,18 @@ export const useAppStore = create<AppState>()(
       
       setThinking: (thinking) => set({ isThinking: thinking }),
       
-      updateProgress: (status, message, progress) => set((state) => ({ 
-        processingStatus: status, 
-        statusMessage: message, 
-        progress,
-        showOssPopup: status === 'COMPLETED' && state.processingStatus !== 'COMPLETED' ? true : state.showOssPopup
-      })),
+      updateProgress: (status, message, newProgress) => set((state) => {
+        let finalProgress = newProgress;
+        if (status !== 'IDLE' && status !== 'UPLOADING' && status !== 'DOWNLOADING' && status !== 'FAILED') {
+          finalProgress = Math.max(state.progress, newProgress);
+        }
+        return {
+          processingStatus: status,
+          statusMessage: message,
+          progress: finalProgress,
+          showOssPopup: status === 'COMPLETED' && state.processingStatus !== 'COMPLETED' ? true : state.showOssPopup
+        };
+      }),
       
       setShowOssPopup: (show) => set({ showOssPopup: show }),
 

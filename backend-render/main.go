@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/semaphore"
 )
 
 type EditOperation struct {
@@ -34,7 +36,12 @@ type EditPlan struct {
 	Operations   []EditOperation `json:"operations"`
 }
 
-var ctx = context.Background()
+var (
+	ctx        = context.Background()
+	semLimit   *semaphore.Weighted
+	uploadDir  = "uploads"
+	clipsDir   = "uploads/clips"
+)
 
 func main() {
 	redisAddr := os.Getenv("REDIS_URL")
@@ -45,7 +52,24 @@ func main() {
 		Addr: redisAddr,
 	})
 
-	log.Println("ClipForge Render Engine started. Listening on 'stream:render'...")
+	maxConcurrent := 2
+	if envMax := os.Getenv("MAX_CONCURRENT_RENDERS"); envMax != "" {
+		if val, err := strconv.Atoi(envMax); err == nil && val > 0 {
+			maxConcurrent = val
+		}
+	}
+	semLimit = semaphore.NewWeighted(int64(maxConcurrent))
+
+	if dir := os.Getenv("UPLOAD_DIR"); dir != "" {
+		uploadDir = dir
+	}
+	if dir := os.Getenv("CLIPS_DIR"); dir != "" {
+		clipsDir = dir
+	}
+	os.MkdirAll(uploadDir, os.ModePerm)
+	os.MkdirAll(clipsDir, os.ModePerm)
+
+	log.Printf("ClipForge Render Engine started (Max Concurrency: %d). Listening on 'stream:render'...", maxConcurrent)
 
 	streamName := "stream:render"
 	groupName := "render_engine_group"
@@ -91,188 +115,177 @@ func main() {
 				continue
 			}
 
-			log.Printf("Received render task for Project %d", plan.ProjectID)
-		publishProgress(rdb, plan.ProjectID, "rendering", "Iniciando renderização da inteligência artificial...", 85)
+			// Process render task with concurrency limiting
+			go processRenderTask(rdb, streamName, groupName, msg.ID, plan)
+		}
+	}
+}
 
-		// Parse operations to build FFmpeg command
-		var startTime, endTime float64
-		var subtitleFile string
-		var keepSegments [][]float64
-		var clipTitle string
-		hasClip := false
+func processRenderTask(rdb *redis.Client, streamName, groupName, msgID string, plan EditPlan) {
+	defer rdb.XAck(ctx, streamName, groupName, msgID)
 
-		for _, op := range plan.Operations {
-			switch op.Type {
-			case "clip":
-				startTime = op.Start
-				endTime = op.End
-				keepSegments = op.KeepSegments
-				clipTitle = op.Title
-				hasClip = true
-			case "subtitle":
-				subtitleFile = op.File
+	// Acquire semaphore lock to protect GPU/CPU
+	if err := semLimit.Acquire(ctx, 1); err != nil {
+		log.Printf("Failed to acquire render semaphore: %v", err)
+		return
+	}
+	defer semLimit.Release(1)
+
+	log.Printf("[Render Engine] Processing project %d with %d operations", plan.ProjectID, len(plan.Operations))
+
+	var startTime, endTime float64
+	var subtitleFile string
+	var keepSegments [][]float64
+	var clipTitle string
+	var clipScore float64
+	hasClip := false
+
+	for _, op := range plan.Operations {
+		switch op.Type {
+		case "clip":
+			startTime = op.Start
+			endTime = op.End
+			keepSegments = op.KeepSegments
+			clipTitle = op.Title
+			clipScore = op.Score
+			hasClip = true
+		case "subtitle":
+			subtitleFile = op.File
+		}
+	}
+
+	if !hasClip {
+		log.Printf("No clip operation found for Project %d. Skipping.", plan.ProjectID)
+		publishFailed(rdb, plan.ProjectID, "Nenhuma operação de corte (clip) encontrada no plano.")
+		return
+	}
+
+	duration := endTime - startTime
+	if duration <= 0 {
+		duration = 15.0
+	}
+
+	// Output clip path
+	clipSlug := fmt.Sprintf("clip_%d_t%.0f_%.0f.mp4", plan.ProjectID, startTime, endTime)
+	outputPath := filepath.Join(clipsDir, clipSlug)
+
+	// Idempotency check: if file already exists, reuse it
+	if _, err := os.Stat(outputPath); err == nil {
+		log.Printf("[Render Engine] Optimization: File %s already exists. Skipping render.", outputPath)
+		publishClipCompleted(rdb, plan.ProjectID, outputPath, clipTitle, clipScore, startTime, endTime)
+		return
+	}
+
+	publishProgress(rdb, plan.ProjectID, "rendering", fmt.Sprintf("Renderizando corte: %s...", clipTitle), 85)
+
+	// Build FFmpeg Video Filter (Aspect Ratio Crop + Subtitles)
+	var vfFilters string
+	switch plan.VideoFormat {
+	case "1:1":
+		vfFilters = "crop=ih:ih:(iw-ow)/2:0,scale=1080:1080"
+	case "16:9":
+		vfFilters = "scale=1920:1080"
+	case "9:16":
+		fallthrough
+	default:
+		vfFilters = "crop=ih*(9/16):ih:(iw-ow)/2:0,scale=1080:1920"
+	}
+
+	if subtitleFile != "" && fileExists(subtitleFile) {
+		cleanSub := filepath.ToSlash(subtitleFile)
+		vfFilters += fmt.Sprintf(",subtitles='%s'", cleanSub)
+	}
+
+	// Build audio filters if requested
+	var afFilters string
+	if plan.RemoveNoise {
+		afFilters = "afftdn=nf=-25"
+	}
+
+	// Support jump cuts if segments are defined
+	if len(keepSegments) > 0 {
+		var selectParts []string
+		for _, seg := range keepSegments {
+			if len(seg) == 2 {
+				selectParts = append(selectParts, fmt.Sprintf("between(t,%f,%f)", seg[0], seg[1]))
 			}
 		}
-
-		if !hasClip {
-			log.Printf("No clip operation found for Project %d. Skipping.", plan.ProjectID)
-			publishFailed(rdb, plan.ProjectID, "Nenhuma operação de corte (clip) encontrada no plano.")
-			rdb.XAck(ctx, streamName, groupName, msg.ID)
-			continue
-		}
-
-		// Idempotency Lock: Prevent duplicate renders of the same clip timeframe
-		lockKey := fmt.Sprintf("lock:render:project_%d:t_%.2f_%.2f:fmt_%s", plan.ProjectID, startTime, endTime, plan.VideoFormat)
-		locked, err := rdb.SetNX(ctx, lockKey, "1", 1*time.Hour).Result()
-		if err != nil || !locked {
-			log.Printf("Clip '%s' for Project %d is already being rendered (lock exists on timeframe). Skipping duplicate job.", clipTitle, plan.ProjectID)
-			rdb.XAck(ctx, streamName, groupName, msg.ID)
-			continue
-		}
-
-		duration := endTime - startTime
-		// Use a unique name based on title AND timestamps to prevent collision if titles are identical
-		safeTitle := strings.ReplaceAll(clipTitle, ":", "x")
-		outputPath := filepath.Join("uploads", fmt.Sprintf("project_%d_t%.0f_%.0f_%s_final.mp4", plan.ProjectID, startTime, endTime, safeTitle))
-		
-		// 1. Determine base crop from video_format
-		var cropFilter string
-		switch plan.VideoFormat {
-		case "16:9":
-			cropFilter = "" // Keep original (assuming horizontal)
-		case "1:1":
-			cropFilter = "crop=ih:ih"
-		case "9:16":
-			fallthrough
-		default:
-			cropFilter = "crop=ih*(9/16):ih"
-		}
-
-		vfFilters := cropFilter
-
-		// 2. Add hardsubs if requested
-		if subtitleFile != "" {
-			safePath := filepath.ToSlash(subtitleFile)
-			if vfFilters != "" {
-				vfFilters += ","
-			}
-			vfFilters += fmt.Sprintf("ass='%s'", safePath)
-		}
-
-		// 3. Build Jump-Cut complex filters if keep_segments exists
-		var afFilters string
-		if plan.RemoveNoise {
-			afFilters = "afftdn=nf=-25"
-		}
-
-		if len(keepSegments) > 0 {
-			var selectParts []string
-			for _, seg := range keepSegments {
-				if len(seg) == 2 {
-					selectParts = append(selectParts, fmt.Sprintf("between(t,%f,%f)", seg[0], seg[1]))
-				}
-			}
-			
-			if len(selectParts) > 0 {
-				selectExpr := ""
-				for i, p := range selectParts {
-					if i > 0 {
-						selectExpr += "+"
-					}
-					selectExpr += p
-				}
-				
-				jumpCutV := fmt.Sprintf("select='%s',setpts=N/FRAME_RATE/TB", selectExpr)
-				jumpCutA := fmt.Sprintf("aselect='%s',asetpts=N/SR/TB", selectExpr)
-				
-				if vfFilters != "" {
-					vfFilters = jumpCutV + "," + vfFilters
-				} else {
-					vfFilters = jumpCutV
-				}
-
-				if afFilters != "" {
-					afFilters = afFilters + "," + jumpCutA
-				} else {
-					afFilters = jumpCutA
-				}
+		if len(selectParts) > 0 {
+			selectExpr := strings.Join(selectParts, "+")
+			jumpCutV := fmt.Sprintf("select='%s',setpts=N/FRAME_RATE/TB", selectExpr)
+			jumpCutA := fmt.Sprintf("aselect='%s',asetpts=N/SR/TB", selectExpr)
+			vfFilters = jumpCutV + "," + vfFilters
+			if afFilters != "" {
+				afFilters = afFilters + "," + jumpCutA
+			} else {
+				afFilters = jumpCutA
 			}
 		}
+	}
 
-		ffmpegArgs := []string{
-			"-y",
-			"-hwaccel", "cuda",
-			"-ss", fmt.Sprintf("%f", startTime),
-			"-i", plan.OriginalFile,
-			"-t", fmt.Sprintf("%f", duration),
-		}
+	// Base args (threads capped to 2 to prevent CPU saturation)
+	baseArgs := []string{
+		"-y",
+		"-threads", "2",
+		"-ss", fmt.Sprintf("%.2f", startTime),
+		"-i", plan.OriginalFile,
+		"-t", fmt.Sprintf("%.2f", duration),
+	}
+	if vfFilters != "" {
+		baseArgs = append(baseArgs, "-vf", vfFilters)
+	}
+	if afFilters != "" {
+		baseArgs = append(baseArgs, "-af", afFilters)
+	}
 
-		if vfFilters != "" {
-			ffmpegArgs = append(ffmpegArgs, "-vf", vfFilters)
-		}
-		if afFilters != "" {
-			ffmpegArgs = append(ffmpegArgs, "-af", afFilters)
-		}
+	// 1. Try Hardware NVENC first
+	nvencArgs := append([]string{}, baseArgs...)
+	nvencArgs = append(nvencArgs,
+		"-c:v", "h264_nvenc",
+		"-preset", "p4",
+		"-cq", "24",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		outputPath,
+	)
 
-		var ffmpegArgsNVENC []string
-		ffmpegArgsNVENC = append(ffmpegArgsNVENC, ffmpegArgs...)
-		ffmpegArgsNVENC = append(ffmpegArgsNVENC,
-			"-c:v", "h264_nvenc",
-			"-preset", "fast",
-			"-c:a", "aac",
-			outputPath,
-		)
-		
-		var ffmpegArgsFallback []string
-		ffmpegArgsFallback = append(ffmpegArgsFallback, ffmpegArgs...)
-		ffmpegArgsFallback = append(ffmpegArgsFallback,
+	cmdNVENC := exec.Command("ffmpeg", nvencArgs...)
+	cmdNVENC.Stdout = os.Stdout
+	cmdNVENC.Stderr = os.Stderr
+
+	log.Printf("[Render Engine] Attempting NVENC render: %s", cmdNVENC.String())
+	err := cmdNVENC.Run()
+	if err != nil {
+		log.Printf("[Render Engine] NVENC failed (%v). Falling back to CPU libx264...", err)
+
+		cpuArgs := append([]string{}, baseArgs...)
+		cpuArgs = append(cpuArgs,
 			"-c:v", "libx264",
-			"-preset", "fast",
+			"-preset", "veryfast",
+			"-threads", "2",
+			"-crf", "23",
 			"-c:a", "aac",
+			"-b:a", "128k",
 			outputPath,
 		)
 
-		// Optimization: Check if the exact same file already exists (from a previous process)
-		if _, err := os.Stat(outputPath); err == nil {
-			log.Printf("Optimization: File %s already exists. Skipping GPU render.", outputPath)
-			rdb.Del(ctx, lockKey)
-			publishClipCompleted(rdb, plan.ProjectID, []string{outputPath}, clipTitle)
-			rdb.XAck(ctx, streamName, groupName, msg.ID)
-			continue
+		cmdCPU := exec.Command("ffmpeg", cpuArgs...)
+		cmdCPU.Stdout = os.Stdout
+		cmdCPU.Stderr = os.Stderr
+		if errCPU := cmdCPU.Run(); errCPU != nil {
+			log.Printf("[Render Engine] CPU Render failed: %v", errCPU)
+			publishFailed(rdb, plan.ProjectID, fmt.Sprintf("Erro ao renderizar com FFmpeg: %v", errCPU))
+			return
 		}
+	}
 
-		cmd := exec.Command("ffmpeg", ffmpegArgsNVENC...)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		
-		log.Printf("Running FFmpeg (GPU NVENC): %s", cmd.String())
-		if err := cmd.Run(); err != nil {
-			log.Printf("FFmpeg NVENC failed: %v. Retrying with CPU Fallback (libx264)...", err)
-			
-			// Fallback execution
-			cmdFallback := exec.Command("ffmpeg", ffmpegArgsFallback...)
-			cmdFallback.Stdout = os.Stdout
-			cmdFallback.Stderr = os.Stderr
-			log.Printf("Running FFmpeg Fallback (CPU): %s", cmdFallback.String())
-			
-			if errFallback := cmdFallback.Run(); errFallback != nil {
-				log.Printf("FFmpeg Fallback failed: %v", errFallback)
-				publishFailed(rdb, plan.ProjectID, "Falha na renderização de vídeo pelo FFmpeg (Hardware e Software limitados).")
-				rdb.Del(ctx, lockKey) // Remove lock if failed so it can be retried
-				rdb.XAck(ctx, streamName, groupName, msg.ID)
-				continue
-			}
-		}
+	log.Printf("[Render Engine] Clip '%s' rendered successfully: %s", clipTitle, outputPath)
+	publishClipCompleted(rdb, plan.ProjectID, outputPath, clipTitle, clipScore, startTime, endTime)
+}
 
-		log.Printf("Project %d - Clip '%s' completed successfully.", plan.ProjectID, clipTitle)
-		rdb.Del(ctx, lockKey)
-		
-		publishClipCompleted(rdb, plan.ProjectID, []string{outputPath}, clipTitle)
-		
-		// Confirm completion and remove from pending queue
-		rdb.XAck(ctx, streamName, groupName, msg.ID)
-		} // end for messages
-	} // end for infinite loop
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 func publishProgress(rdb *redis.Client, projectID uint, status, message string, progress int) {
@@ -288,13 +301,19 @@ func publishProgress(rdb *redis.Client, projectID uint, status, message string, 
 	})
 }
 
-func publishClipCompleted(rdb *redis.Client, projectID uint, files []string, title string) {
+func publishClipCompleted(rdb *redis.Client, projectID uint, outputPath, title string, score, start, end float64) {
 	payload, _ := json.Marshal(map[string]interface{}{
 		"project_id": projectID,
 		"status":     "rendering",
-		"files":      files,
+		"files":      []string{outputPath},
 		"clips": []map[string]interface{}{
-			{"title": title},
+			{
+				"title":      title,
+				"score":      score,
+				"start_time": start,
+				"end_time":   end,
+				"video_url":  outputPath,
+			},
 		},
 	})
 	rdb.XAdd(ctx, &redis.XAddArgs{

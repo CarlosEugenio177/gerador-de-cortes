@@ -1,37 +1,80 @@
 version: '3.8'
 
 services:
-  api-backend:
+  gateway:
     build:
-      context: ./backend
+      context: ./backend-go
       dockerfile: Dockerfile
-    container_name: playsquad_backend
+    container_name: clipforge_gateway
     restart: always
     ports:
       - "8000:8000"
     environment:
+      - PORT=8000
+      - DATABASE_URL=host=db user=postgres password=postgres dbname=clipforge port=5432 sslmode=disable
+      - REDIS_URL=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
       - UPLOAD_DIR=/app/uploads
       - CLIPS_DIR=/app/uploads/clips
     volumes:
-      - ./backend:/app
       - uploads_data:/app/uploads
-    command: uvicorn app.main_api:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - db
+      - redis
+
+  render-engine:
+    build:
+      context: ./backend-render
+      dockerfile: Dockerfile
+    container_name: clipforge_render
+    restart: always
+    environment:
+      - REDIS_URL=redis:6379
+      - UPLOAD_DIR=/app/uploads
+      - CLIPS_DIR=/app/uploads/clips
+      - MAX_CONCURRENT_RENDERS=2
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      - redis
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: playsquad_frontend
+    container_name: clipforge_frontend
     restart: always
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
     depends_on:
-      - api-backend
+      - gateway
+
+  db:
+    image: postgres:16-alpine
+    container_name: clipforge_db
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=clipforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: clipforge_redis
+    restart: always
+    ports:
+      - "6379:6379"
 
 volumes:
   uploads_data:
+  postgres_data:

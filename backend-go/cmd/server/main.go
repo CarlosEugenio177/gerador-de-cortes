@@ -5,6 +5,7 @@ import (
 	"clipforge-gateway/internal/api/handlers"
 	"clipforge-gateway/internal/config"
 	"clipforge-gateway/internal/repository"
+	"clipforge-gateway/internal/services"
 	"clipforge-gateway/internal/worker"
 
 	"github.com/gofiber/fiber/v2"
@@ -40,8 +41,15 @@ func main() {
 	// Start Event Listeners
 	worker.StartEventListeners()
 
+	// Initialize Cloud AI Pipeline Service in Go
+	services.InitPipelineService(cfg, worker.RedisClient)
+
 	// Routes
 	v1 := app.Group("/api/v1")
+
+	// URL Processing Endpoints
+	v1.Post("/analyze-url", handlers.AnalyzeURL)
+	v1.Post("/process-url", handlers.ProcessURL)
 
 	// WebSockets Upgrade Middleware
 	v1.Use("/ws", func(c *fiber.Ctx) error {
@@ -71,11 +79,18 @@ func main() {
 	
 	// Health
 	v1.Get("/", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "healthy", "service": "go-gateway"})
+		return c.JSON(fiber.Map{
+			"status":  "healthy",
+			"service": "go-gateway",
+			"engine":  "ClipForge Cloud-AI Engine v3.0 (Pure Go)",
+		})
 	})
 
-	// Static Files
+	// Static Files (Uploads & Clips)
 	app.Static("/uploads", "./uploads", fiber.Static{
+		ByteRange: true,
+	})
+	app.Static("/api/v1/media", "./uploads/clips", fiber.Static{
 		ByteRange: true,
 	})
 
@@ -88,15 +103,16 @@ func main() {
 	projects.Delete("/:id", handlers.DeleteProject)
 	projects.Post("/:id/reprocess", handlers.ReprocessProject)
 	projects.Post("/:id/cancel", handlers.CancelProject)
-	projects.Post("/:id/transcribe", handlers.TranscribeProject)
 	projects.Get("/:id/transcript", handlers.GetTranscript)
 	projects.Put("/:id/transcript", handlers.SaveTranscript)
-	projects.Post("/:id/render-custom", handlers.RenderCustomProject)
 
 	// Clips
 	clips := v1.Group("/clips")
 	clips.Get("/", handlers.GetAllClips)
 	clips.Delete("/:id", handlers.DeleteClip)
+	clips.Get("/:id/export/edl", handlers.ExportClipEDL)
+	clips.Get("/:id/export/srt", handlers.ExportClipSRT)
+	clips.Get("/:id/export/bundle", handlers.ExportClipBundle)
 
 	// Assets
 	assets := v1.Group("/assets")

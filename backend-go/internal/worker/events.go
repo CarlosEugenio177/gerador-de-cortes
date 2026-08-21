@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"clipforge-gateway/internal/models"
 	"clipforge-gateway/internal/repository"
@@ -171,10 +172,11 @@ func handleClipCompleted(payload EventPayload, rawMsg string) {
 	// Update the specific clip with its output path
 	if len(payload.Files) > 0 && len(payload.Clips) > 0 {
 		file := payload.Files[0]
+		cleanURL := fmt.Sprintf("/uploads/clips/%s", filepath.Base(file))
 		clipTitle := payload.Clips[0].Title
 		repository.DB.Model(&models.Clip{}).
 			Where("project_id = ? AND title = ? AND (file_path IS NULL OR file_path = '')", projectID, clipTitle).
-			Update("file_path", file)
+			Update("file_path", cleanURL)
 	}
 
 	// Check if all clips for this project have a video URL

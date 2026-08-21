@@ -8,10 +8,17 @@ import (
 )
 
 type Config struct {
-	DatabaseURL       string
-	RedisURL          string
-	Port              string
-	JWTSecret         string
+	DatabaseURL     string
+	RedisURL        string
+	Port            string
+	JWTSecret       string
+	OpenAIKey       string
+	GroqKey         string
+	GeminiKey       string
+	OpenRouterKey   string
+	OpenRouterModel string
+	UploadDir       string
+	ClipsDir        string
 }
 
 func LoadConfig() *Config {
@@ -22,7 +29,6 @@ func LoadConfig() *Config {
 
 	dbUrl := os.Getenv("DATABASE_URL")
 	if dbUrl == "" {
-		// Use default identical to Python backend but without asyncpg
 		dbUrl = "host=db user=postgres password=postgres dbname=clipforge port=5432 sslmode=disable"
 	}
 
@@ -41,10 +47,32 @@ func LoadConfig() *Config {
 		jwtSecret = "dev-secret-key-do-not-use-in-prod"
 	}
 
+	uploadDir := os.Getenv("UPLOAD_DIR")
+	if uploadDir == "" {
+		uploadDir = "./uploads"
+	}
+
+	clipsDir := os.Getenv("CLIPS_DIR")
+	if clipsDir == "" {
+		clipsDir = "./uploads/clips"
+	}
+
+	openRouterModel := os.Getenv("OPENROUTER_MODEL")
+	if openRouterModel == "" {
+		openRouterModel = "meta-llama/llama-3.3-70b-instruct:free"
+	}
+
 	return &Config{
-		DatabaseURL: dbUrl,
-		RedisURL:    redisUrl,
-		Port:        port,
-		JWTSecret:   jwtSecret,
+		DatabaseURL:     dbUrl,
+		RedisURL:        redisUrl,
+		Port:            port,
+		JWTSecret:       jwtSecret,
+		OpenAIKey:       os.Getenv("OPENAI_API_KEY"),
+		GroqKey:         os.Getenv("GROQ_API_KEY"),
+		GeminiKey:       os.Getenv("GEMINI_API_KEY"),
+		OpenRouterKey:   os.Getenv("OPENROUTER_API_KEY"),
+		OpenRouterModel: openRouterModel,
+		UploadDir:       uploadDir,
+		ClipsDir:        clipsDir,
 	}
 }

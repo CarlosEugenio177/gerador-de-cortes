@@ -2,6 +2,7 @@ package repository
 
 import (
 	"log"
+	"time"
 	"clipforge-gateway/internal/config"
 	"clipforge-gateway/internal/models"
 
@@ -14,14 +15,20 @@ var DB *gorm.DB
 func ConnectDB(cfg *config.Config) {
 	var err error
 	
-	// Convert URL format if necessary. GORM postgres driver prefers DSN, 
-	// but it can also parse postgres:// URLs if configured properly.
-	// In config we set a DSN.
+	// Convert URL format if necessary. GORM postgres driver prefers DSN.
 	dsn := cfg.DatabaseURL
 
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	// Connect with retry
+	for i := 0; i < 15; i++ {
+		DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		if err == nil {
+			break
+		}
+		log.Printf("Waiting for database connection (attempt %d/15)...", i+1)
+		time.Sleep(2 * time.Second)
+	}
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("Failed to connect to database after retries: %v", err)
 	}
 
 	log.Println("Connected to database successfully")
